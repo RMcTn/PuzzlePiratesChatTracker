@@ -1,0 +1,1 @@
+TODO: Document the config file saving/loading chat log paths
