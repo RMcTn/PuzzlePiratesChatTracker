@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io;
-use std::io::{BufRead, Read};
+use std::{fs, io};
+use std::io::{BufRead, Read, Write};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -41,14 +41,31 @@ fn main() {
 
     let mut parsed_stuff = None;
 
+    let config_path = Path::new("greedy-tracker.conf");
+
+    if let Ok(contents) =  fs::read_to_string(config_path){
+       // TODO: FIXME: Don't assume only the path is there for
+        chat_log_path = Some(Path::new(&contents).to_path_buf());
+    };
+
     let mut selected_panel = Tabs::GreedyHits;
     let mut last_reparse = Instant::now();
     let timer_threshold = Duration::from_millis(2000);
+
+    if let Some(path) = &chat_log_path {
+        parsed_stuff = Some(chat_log_stuff(path));
+    }
     eframe::run_simple_native("Greedy tracker", options, move |ctx, _frame| {
         egui::CentralPanel::default().show(ctx, |mut ui| {
             if ui.button("Open chat log").clicked() {
                 if let Some(path) = rfd::FileDialog::new().pick_file() {
-                    chat_log_path = Some(path);
+                    chat_log_path = Some(path.clone());
+
+                    if let Ok(mut file) = File::create(config_path) {
+                        file.write_all(path.to_string_lossy().as_bytes()).unwrap();
+                    } else {
+                        eprintln!("Couldn't open config file at {}", config_path.to_string_lossy());
+                    }
                 }
 
                 // TODO: Drag and drop file
