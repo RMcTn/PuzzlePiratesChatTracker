@@ -27,31 +27,45 @@ fn main() {
     // TODO: Message monitor - look for messages in trade chat like 'message contains BUYING <some text> <item>, but only if the item is before a SELLING word in the same message etc)
     // TODO: "global chats" tab
     // TODO: "trade chats" tab
+    // TODO: "tells chat" tab
     // TODO: Warning if chat log is over a certain size?
     // TODO: Filters for the chat tab? Search by word, pirate name etc
     // TODO: Configurable delay
-    let chat_log_path = Path::new("C:/Users/r/Documents/***REMOVED***_emerald_puzzlepirateslog.txt");
+    // TODO: File picker
+    // TODO: Error on failed parse (wrong file given for example)
+    let mut chat_log_path = None;
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default(),
         ..Default::default()
     };
 
-    let mut parsed_stuff = chat_log_stuff(&chat_log_path);
+    let mut parsed_stuff = None;
 
     let mut selected_panel = Tabs::GreedyHits;
     let mut last_reparse = Instant::now();
     let timer_threshold = Duration::from_millis(2000);
     eframe::run_simple_native("Greedy tracker", options, move |ctx, _frame| {
         egui::CentralPanel::default().show(ctx, |mut ui| {
+            if ui.button("Open chat log").clicked() {
+                if let Some(path) = rfd::FileDialog::new().pick_file() {
+                    chat_log_path = Some(path);
+                }
+
+                // TODO: Drag and drop file
+            }
             if ui.button("Reload chat log").clicked() {
-                parsed_stuff = chat_log_stuff(&chat_log_path);
+                if let Some(path) = &chat_log_path {
+                    parsed_stuff = Some(chat_log_stuff(&path));
+                }
             }
             if ui.ctx().has_requested_repaint() {
                 let now = Instant::now();
                 let time_since_last_reparse = now - last_reparse;
                 if time_since_last_reparse > timer_threshold {
                     dbg!("Running repaint");
-                    parsed_stuff = chat_log_stuff(&chat_log_path);
+                    if let Some(path) = &chat_log_path {
+                        parsed_stuff = Some(chat_log_stuff(path));
+                    }
                     last_reparse = Instant::now();
                 }
             }
@@ -62,64 +76,72 @@ fn main() {
             });
 
             match selected_panel {
-                Tabs::GreedyHits => greedy_ui(&mut ui, &parsed_stuff, &chat_log_path),
-                Tabs::Chat => chat_ui(&mut ui, &parsed_stuff),
+                Tabs::GreedyHits => greedy_ui(&mut ui, parsed_stuff.as_ref()),
+                Tabs::Chat => chat_ui(&mut ui, parsed_stuff.as_ref()),
             }
         });
     }).unwrap();
 }
 
-fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff) {
+fn chat_ui(ui: &mut Ui, parsed_stuff: Option<&ParsedStuff>) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.heading("Chat");
-        for (i, message) in parsed_stuff.chat_messages.iter().rev().enumerate() {
-            let message_limit = 100;
-            if i >= message_limit {
-                break;
-            }
+        if let Some(parsed_stuff) = parsed_stuff {
+            for (i, message) in parsed_stuff.chat_messages.iter().rev().enumerate() {
+                let message_limit = 100;
+                if i >= message_limit {
+                    break;
+                }
 
-            ui.separator();
-            ui.label(message);
+                ui.separator();
+                ui.label(message);
+            }
+        } else {
+            ui.label("No chat messages found.");
         }
     });
 }
 
-fn greedy_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, chat_log_path: &Path) {
+fn greedy_ui(ui: &mut Ui, parsed_stuff: Option<&ParsedStuff>) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.heading("Greedy hits");
-        for battle in &parsed_stuff.battles {
-            ui.separator();
-            ui.heading(format!("Battle between {} and {}", battle.attacker_ship, battle.defender_ship));
-            let greedy_count: u32 = battle.greedies.values().sum();
-            let total_greedy_hits_str = format!("{} Greedies in total", greedy_count);
-            ui.label(&total_greedy_hits_str);
-            if battle.greedies.is_empty() {
-                ui.label("No Greedies for this battle");
-            } else {
-                let mut sorted_results: Vec<(&String, &u32)> = battle.greedies.iter().collect();
-                sorted_results.sort_by(|a, b| b.1.cmp(a.1));
+        if let Some(parsed_stuff) = parsed_stuff {
+            for battle in &parsed_stuff.battles {
+                ui.separator();
+                ui.heading(format!("Battle between {} and {}", battle.attacker_ship, battle.defender_ship));
+                let greedy_count: u32 = battle.greedies.values().sum();
+                let total_greedy_hits_str = format!("{} Greedies in total", greedy_count);
+                ui.label(&total_greedy_hits_str);
+                if battle.greedies.is_empty() {
+                    ui.label("No Greedies for this battle");
+                } else {
+                    let mut sorted_results: Vec<(&String, &u32)> = battle.greedies.iter().collect();
+                    sorted_results.sort_by(|a, b| b.1.cmp(a.1));
 
-                let mut greedy_clipboard_text = String::new();
-                greedy_clipboard_text.push_str(&total_greedy_hits_str);
-                greedy_clipboard_text += ". ";
+                    let mut greedy_clipboard_text = String::new();
+                    greedy_clipboard_text.push_str(&total_greedy_hits_str);
+                    greedy_clipboard_text += ". ";
 
-                for (i, entry) in sorted_results.iter().enumerate() {
-                    let s = if i == sorted_results.len() - 1 {
-                        format!("{}: {}", entry.0, entry.1)
-                    } else {
-                        format!("{}: {}, ", entry.0, entry.1)
-                    };
-                    greedy_clipboard_text.push_str(&s);
-                }
+                    for (i, entry) in sorted_results.iter().enumerate() {
+                        let s = if i == sorted_results.len() - 1 {
+                            format!("{}: {}", entry.0, entry.1)
+                        } else {
+                            format!("{}: {}, ", entry.0, entry.1)
+                        };
+                        greedy_clipboard_text.push_str(&s);
+                    }
 
-                if ui.button("Copy me!").clicked() {
-                    ui.output_mut(|o| o.copied_text = greedy_clipboard_text);
-                }
+                    if ui.button("Copy me!").clicked() {
+                        ui.output_mut(|o| o.copied_text = greedy_clipboard_text);
+                    }
 
-                for entry in &sorted_results {
-                    ui.label(format!("{} got {}", entry.0, entry.1));
+                    for entry in &sorted_results {
+                        ui.label(format!("{} got {}", entry.0, entry.1));
+                    }
                 }
             }
+        } else {
+            ui.label("No battles detected.");
         }
     });
 }
@@ -136,7 +158,6 @@ fn chat_log_stuff(path: &Path) -> ParsedStuff {
     let mut chat_messages = vec![];
 
     for line in lines {
-        // TODO: FIXME: It may be possible for a chat message to span multiple lines
         if line.is_err() {
             // TODO: Investigate what invalid utf8 we'd actually get
             continue;
@@ -144,6 +165,8 @@ fn chat_log_stuff(path: &Path) -> ParsedStuff {
         let line = line.unwrap();
 
         if is_chat_line(&line) {
+            // TODO: FIXME: It may be possible for a chat message to span multiple lines
+            //      a chat from a player will end in a ", even if it's over multiple lines
             // Skip any more processing, cba with borrow checker atm
             chat_messages.push(line);
             continue;
