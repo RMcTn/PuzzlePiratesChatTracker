@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io;
 use std::io::{BufRead, Read};
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use egui::Ui;
 
@@ -27,6 +28,8 @@ fn main() {
     // TODO: "global chats" tab
     // TODO: "trade chats" tab
     // TODO: Copy greedy hits text for battle
+    // TODO: Warning if chat log is over a certain size?
+    // TODO: Filters for the chat tab? Search by word, pirate name etc
     let chat_log_path = Path::new("C:/Users/r/Documents/***REMOVED***_emerald_puzzlepirateslog.txt");
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default(),
@@ -36,15 +39,21 @@ fn main() {
     let mut parsed_stuff = chat_log_stuff(&chat_log_path);
 
     let mut selected_panel = Tabs::GreedyHits;
+    let mut last_reparse = Instant::now();
+    let timer_threshold = Duration::from_millis(2000);
     eframe::run_simple_native("Greedy tracker", options, move |ctx, _frame| {
         egui::CentralPanel::default().show(ctx, |mut ui| {
             if ui.button("Reload chat log").clicked() {
                 parsed_stuff = chat_log_stuff(&chat_log_path);
             }
             if ui.ctx().has_requested_repaint() {
-                // TODO: limit chat log parsing to a time threshold (only reparsed every half second for example)
-                // dbg!("Running repaint {}", std::time::Instant::now());
-                // parsed_stuff = chat_log_stuff(&chat_log_path, max_lines_to_look_at);
+                let now = Instant::now();
+                let time_since_last_reparse = now - last_reparse;
+                if time_since_last_reparse > timer_threshold {
+                    dbg!("Running repaint");
+                    parsed_stuff = chat_log_stuff(&chat_log_path);
+                    last_reparse = Instant::now();
+                }
             }
 
             ui.horizontal(|ui| {
@@ -127,6 +136,7 @@ fn chat_log_stuff(path: &Path) -> ParsedStuff {
     let mut chat_messages = vec![];
 
     for line in lines {
+        // TODO: FIXME: It may be possible for a chat message to span multiple lines
         if line.is_err() {
             // TODO: Investigate what invalid utf8 we'd actually get
             continue;
