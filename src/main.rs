@@ -27,9 +27,9 @@ fn main() {
     // TODO: Message monitor - look for messages in trade chat like 'message contains BUYING <some text> <item>, but only if the item is before a SELLING word in the same message etc)
     // TODO: "global chats" tab
     // TODO: "trade chats" tab
-    // TODO: Copy greedy hits text for battle
     // TODO: Warning if chat log is over a certain size?
     // TODO: Filters for the chat tab? Search by word, pirate name etc
+    // TODO: Configurable delay
     let chat_log_path = Path::new("C:/Users/r/Documents/***REMOVED***_emerald_puzzlepirateslog.txt");
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default(),
