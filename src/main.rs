@@ -39,27 +39,46 @@ fn main() {
                 parsed_stuff = chat_log_stuff(&chat_log_path);
             }
             if ui.ctx().has_requested_repaint() {
+                // TODO: limit chat log parsing to a time threshold (only reparsed every half second for example)
                 // dbg!("Running repaint {}", std::time::Instant::now());
                 // parsed_stuff = chat_log_stuff(&chat_log_path, max_lines_to_look_at);
             }
             egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.heading("My App");
+                ui.heading("Greedy hits");
                 for battle in &parsed_stuff.battles {
                     ui.separator();
                     ui.heading(format!("Battle between {} and {}", battle.attacker_ship, battle.defender_ship));
                     let greedy_count: u32 = battle.greedies.values().sum();
-                    ui.label(format!("{} greedy hits in total", greedy_count));
-
+                    let total_greedy_hits_str = format!("{} Greedies in total", greedy_count);
+                    ui.label(&total_greedy_hits_str);
                     if battle.greedies.is_empty() {
-                        ui.label("No greedies for this battle");
+                        ui.label("No Greedies for this battle");
                     } else {
                         let mut sorted_results: Vec<(&String, &u32)> = battle.greedies.iter().collect();
                         sorted_results.sort_by(|a, b| b.1.cmp(a.1));
 
-                        for entry in sorted_results {
+                        let mut greedy_clipboard_text = String::new();
+                        greedy_clipboard_text.push_str(&total_greedy_hits_str);
+                        greedy_clipboard_text += ". ";
+
+                        for (i, entry) in sorted_results.iter().enumerate() {
+                            let s = if i == sorted_results.len() - 1 {
+                                format!("{}: {}", entry.0, entry.1)
+                            } else {
+                                format!("{}: {}, ", entry.0, entry.1)
+                            };
+                            greedy_clipboard_text.push_str(&s);
+                        }
+
+                        if ui.button("Copy me!").clicked() {
+                            ui.output_mut(|o| o.copied_text = greedy_clipboard_text);
+                        }
+
+                        for entry in &sorted_results {
                             ui.label(format!("{} got {}", entry.0, entry.1));
                         }
                     }
+
                 }
             });
 
@@ -84,7 +103,7 @@ fn main() {
 fn chat_log_stuff(path: &Path) -> ParsedStuff {
     // TODO: NOTE: We don't have to go through the entire file again, just what has changed?
     // TODO: Add some configurable limit of how many lines to look back on.
-    let mut file = File::open(path).unwrap();
+    let file = File::open(path).unwrap();
     let lines = io::BufReader::new(file).lines();
     let mut in_battle = false;
 let mut battles = vec![];
@@ -116,8 +135,8 @@ let mut battles = vec![];
             let battle = Battle {
                 id: battle_count,
                 greedies: BTreeMap::new(),
-                defender_ship: defender_ship,
-                attacker_ship: attacker_ship,
+                defender_ship,
+                attacker_ship,
             };
             battles.push(battle);
             continue;
@@ -173,7 +192,7 @@ mod tests {
 
     #[test]
     fn test_greedy_line() {
-        let str = "[01:50:54] Tamsinlin delivers an overwhelming barrage against Petty Robert, causing some treasure to fall from their grip";
+        let str = "[01:50:54] Bob delivers an overwhelming barrage against Petty Robert, causing some treasure to fall from their grip";
         assert_eq!(is_a_greedy_line(str), true);
     }
 
