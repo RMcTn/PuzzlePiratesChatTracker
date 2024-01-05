@@ -45,7 +45,7 @@ impl ParsedStuff {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 struct Message {
     contents: String,
     sender: String,
@@ -76,7 +76,8 @@ fn main() {
     // TODO: Alert/Sound/Notification on chat containing search term
     // TODO: Text should be selectable in chat tabs at least
     // TODO: Parse the date from the chat log too (format is "====== 2023/12/27 ======")
-    // TODO: Redraw UI even when not focussed. Might need to do the chat log parsing in a background thread
+    // TODO: Force a reparse when search term updates (with debounce period?)
+    // TODO: Wrap message text (just overflows window at the moment)
 
     let mut chat_log_path = Arc::new(Mutex::new(None));
     let options = eframe::NativeOptions {
@@ -98,11 +99,11 @@ fn main() {
     let timer_threshold = Duration::from_millis(2000);
 
     let mut last_search_term = String::new();
-    let mut search_term = String::new();
+    let mut search_term = Arc::new(Mutex::new(String::new()));
 
     if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
         let reader = open_chat_log(path);
-        parse_chat_log(reader, &search_term, &mut parsed_stuff.lock().unwrap());
+        parse_chat_log(reader, &search_term.lock().unwrap(), &mut parsed_stuff.lock().unwrap());
     }
 
     let eframe_ctx = Arc::new(Mutex::new(None::<Context>));
@@ -111,6 +112,7 @@ fn main() {
         let chat_log_path = chat_log_path.clone();
         let parsed_stuff = parsed_stuff.clone();
         let eframe_ctx = eframe_ctx.clone();
+        let search_term = search_term.clone();
 
         std::thread::spawn(move || {
             loop {
@@ -120,8 +122,7 @@ fn main() {
                     dbg!("Reparsing");
                     if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
                         let reader = open_chat_log(path);
-                        let search_term = "";
-                        parse_chat_log(reader, &search_term, &mut parsed_stuff.lock().unwrap());
+                        parse_chat_log(reader, &search_term.lock().unwrap(), &mut parsed_stuff.lock().unwrap());
                         match eframe_ctx.lock().unwrap().as_ref() {
                             Some(ctx) => ctx.request_repaint(),
                             None => (),
@@ -164,7 +165,7 @@ fn main() {
                     // Wipe our progress on reload
                     *parsed_stuff.lock().unwrap() = ParsedStuff::new();
                     //  TODO: Might want to send a message to the background thread instead of doing this parse here
-                    parse_chat_log(reader, &search_term, &mut parsed_stuff.lock().unwrap());
+                    parse_chat_log(reader, &search_term.lock().unwrap(), &mut parsed_stuff.lock().unwrap());
                 }
             }
 
@@ -182,7 +183,7 @@ fn main() {
             match selected_panel {
                 Tabs::GreedyHits => greedy_ui(&mut ui, &parsed_stuff.lock().unwrap()),
                 Tabs::Chat(chat_type) => chat_ui(&mut ui, &parsed_stuff.lock().unwrap(), chat_type),
-                Tabs::SearchTerm => search_chat_ui(&mut ui, &parsed_stuff.lock().unwrap(), &mut search_term),
+                Tabs::SearchTerm => search_chat_ui(&mut ui, &parsed_stuff.lock().unwrap(), &mut search_term.lock().unwrap()),
             }
         });
     }).unwrap();
@@ -335,9 +336,6 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
         let line = line.unwrap();
         parsed.last_line_read += 1;
         parsed.total_lines_read += 1;
-        if line.to_lowercase().contains(&search_string.to_lowercase()) {
-            parsed.messages_with_search_term.push(line.to_string());
-        }
         // TODO: FIXME: It may be possible for a chat message to span multiple lines
         //      a chat from a player will end in a ", even if it's over multiple lines
         if let Some(message) = is_chat_line(&line, &chat_line_regex) {
@@ -392,6 +390,29 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
 
         if is_battle_ended_line(&line) {
             in_battle = false;
+        }
+    }
+
+    if !search_string.is_empty() {
+        for msg in &parsed.chat_messages {
+            if msg.contents.to_lowercase().contains(&search_string.to_lowercase()) {
+                parsed.messages_with_search_term.push(msg.contents.clone());
+            }
+        }
+        for msg in &parsed.trade_chat_messages {
+            if msg.contents.to_lowercase().contains(&search_string.to_lowercase()) {
+                parsed.messages_with_search_term.push(msg.contents.clone());
+            }
+        }
+        for msg in &parsed.global_chat_messages {
+            if msg.contents.to_lowercase().contains(&search_string.to_lowercase()) {
+                parsed.messages_with_search_term.push(msg.contents.clone());
+            }
+        }
+        for msg in &parsed.tells {
+            if msg.contents.to_lowercase().contains(&search_string.to_lowercase()) {
+                parsed.messages_with_search_term.push(msg.contents.clone());
+            }
         }
     }
 }
