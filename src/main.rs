@@ -1,8 +1,7 @@
-use std::{fs, io};
-use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::fs;
 use std::fs::File;
-use std::io::{BufRead, Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -85,7 +84,8 @@ fn main() {
     let mut search_term = String::new();
 
     if let Some(path) = &chat_log_path {
-        parsed_stuff = Some(chat_log_stuff(path, &search_term));
+        let reader = open_chat_log(path);
+        parsed_stuff = Some(parse_chat_log(reader, &search_term));
     }
 
     eframe::run_simple_native("Greedy tracker", options, move |ctx, _frame| {
@@ -105,7 +105,8 @@ fn main() {
             }
             if ui.button("Reload chat log").clicked() {
                 if let Some(path) = &chat_log_path {
-                    parsed_stuff = Some(chat_log_stuff(&path, &search_term));
+                    let reader = open_chat_log(path);
+                    parsed_stuff = Some(parse_chat_log(reader, &search_term));
                 }
             }
             if ui.ctx().has_requested_repaint() {
@@ -114,7 +115,8 @@ fn main() {
                 if time_since_last_reparse > timer_threshold || search_term != last_search_term {
                     dbg!("Running repaint");
                     if let Some(path) = &chat_log_path {
-                        parsed_stuff = Some(chat_log_stuff(path, &search_term));
+                        let reader = open_chat_log(path);
+                        parsed_stuff = Some(parse_chat_log(reader, &search_term));
                     }
                     last_reparse = Instant::now();
                 }
@@ -207,7 +209,6 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: Option<&ParsedStuff>, chat_type: ChatType)
                     });
                     let text = ui.fonts(|f| f.layout_job(job));
                     ui.label(text);
-
                 }
             } else {
                 let strings = strings.unwrap();
@@ -271,11 +272,15 @@ fn greedy_ui(ui: &mut Ui, parsed_stuff: Option<&ParsedStuff>) {
     });
 }
 
-fn chat_log_stuff(path: &Path, search_string: &str) -> ParsedStuff {
+fn open_chat_log(path: &Path) -> BufReader<File> {
+    let file = File::open(path).unwrap();
+    return BufReader::new(file);
+}
+
+fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str) -> ParsedStuff {
     // TODO: NOTE: We don't have to go through the entire file again, just what has changed?
     // TODO: Add some configurable limit of how many lines to look back on.
-    let file = File::open(path).unwrap();
-    let lines = io::BufReader::new(file).lines();
+    let lines = buf_reader.lines();
     let mut in_battle = false;
     let mut battles = vec![];
     let mut battle_count = 0;
@@ -418,7 +423,10 @@ enum ChatType {
 }
 
 mod tests {
-    use crate::{is_a_greedy_line, is_battle_started_line, is_chat_line, is_global_chat_line, is_tell_chat_line, is_trade_chat_line, Message};
+    use std::io::{BufReader, Read};
+
+    use crate::{is_a_greedy_line, is_battle_started_line, is_global_chat_line, is_tell_chat_line, is_trade_chat_line, parse_chat_log};
+
 
     #[test]
     fn test_greedy_line() {
@@ -434,9 +442,18 @@ mod tests {
 
     #[test]
     fn test_regular_chat_line() {
-        let str = "[16:05:01] Someone says, \"we just got intercepted\"";
-        // TODO: Quite pointless test now if we need to pass the regex in. Better just having a test chat log we run against
-        let str = "[16:05:01] NPC Name says, \"we just got intercepted\"";
+        let single_name_string = "[16:05:01] Someone says, \"we just got intercepted\"\"";
+        let double_name_string = "[16:05:01] NPC Name says, \"we just got intercepted\"";
+
+        let log = format!("{}\n{}", single_name_string, double_name_string);
+
+        let reader = BufReader::new(log.as_bytes());
+        let parsed = parse_chat_log(reader, "");
+        assert_eq!(parsed.chat_messages.len(), 2);
+        assert_eq!(parsed.chat_messages[0].contents, single_name_string);
+        assert_eq!(parsed.chat_messages[0].sender, "Someone");
+        assert_eq!(parsed.chat_messages[1].contents, double_name_string);
+        assert_eq!(parsed.chat_messages[1].sender, "NPC Name");
     }
 
     #[test]
