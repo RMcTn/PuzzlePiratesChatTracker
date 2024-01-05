@@ -1,11 +1,12 @@
 use std::{fs, io};
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, Read, Write};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use egui::Ui;
+use egui::{Color32, FontId, TextFormat, Ui};
 use regex::Regex;
 
 #[derive(Debug)]
@@ -19,11 +20,26 @@ struct Battle {
 #[derive(Debug)]
 struct ParsedStuff {
     battles: Vec<Battle>,
-    chat_messages: Vec<String>,
+    chat_messages: Vec<Message>,
     tells: Vec<String>,
     trade_chat_messages: Vec<String>,
     global_chat_messages: Vec<String>,
     messages_with_search_term: Vec<String>,
+}
+
+#[derive(Debug, PartialEq)]
+struct Message {
+    contents: String,
+    sender: String,
+}
+
+impl Message {
+    fn new(contents: String, sender: String) -> Self {
+        return Message {
+            contents,
+            sender,
+        };
+    }
 }
 
 fn main() {
@@ -41,7 +57,7 @@ fn main() {
     // TODO: Combined chat tab?
     // TODO: Alert/Sound/Notification on chat containing search term
     // TODO: Text should be selectable in chat tabs at least
-    // TODO: Colour pirate names in chat tabs?
+    // TODO: Colour pirate names in chat tabs? Will need to store some extra info with our chat messages, like the sender, and then find the index of the start and hopefully be able to highlight certain label text in egui
     // TODO: Tells from NPCs should be handled? These can be multiple words with spaces between for the name before the "tells ye" part
     // TODO: Parse the date from the chat log too (format is "====== 2023/12/27 ======")
 
@@ -155,20 +171,55 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: Option<&ParsedStuff>, chat_type: ChatType)
         };
         ui.heading(heading);
         if let Some(parsed_stuff) = parsed_stuff {
-            let messages = match chat_type {
-                ChatType::Chat => &parsed_stuff.chat_messages,
-                ChatType::Trade => &parsed_stuff.trade_chat_messages,
-                ChatType::Global => &parsed_stuff.global_chat_messages,
-                ChatType::Tell => &parsed_stuff.tells,
+            let messages = &parsed_stuff.chat_messages;
+            let strings = match chat_type {
+                ChatType::Chat => None,
+                ChatType::Trade => Some(&parsed_stuff.trade_chat_messages),
+                ChatType::Global => Some(&parsed_stuff.global_chat_messages),
+                ChatType::Tell => Some(&parsed_stuff.tells),
             };
-            for (i, message) in messages.iter().rev().enumerate() {
-                let message_limit = 100;
-                if i >= message_limit {
-                    break;
-                }
+            if strings.is_none() {
+                for (i, message) in messages.iter().rev().enumerate() {
+                    let message_limit = 100;
+                    if i >= message_limit {
+                        break;
+                    }
 
-                ui.separator();
-                ui.label(message);
+                    ui.separator();
+                    let mut job = egui::text::LayoutJob::default();
+
+                    let start = message.contents.find(&message.sender).unwrap();
+                    let end = start + message.sender.len();
+                    job.append(&message.contents[0..start], 0.0, TextFormat {
+                        font_id: FontId::default(),
+                        color: Color32::DARK_GRAY,
+                        ..Default::default()
+                    });
+                    job.append(&message.contents[start..end], 0.0, TextFormat {
+                        font_id: FontId::default(),
+                        color: Color32::BLUE,
+                        ..Default::default()
+                    });
+                    job.append(&message.contents[end..message.contents.len()], 0.0, TextFormat {
+                        font_id: FontId::default(),
+                        color: Color32::DARK_GRAY,
+                        ..Default::default()
+                    });
+                    let text = ui.fonts(|f| f.layout_job(job));
+                    ui.label(text);
+
+                }
+            } else {
+                let strings = strings.unwrap();
+                for (i, message) in strings.iter().rev().enumerate() {
+                    let message_limit = 100;
+                    if i >= message_limit {
+                        break;
+                    }
+
+                    ui.separator();
+                    ui.label(message);
+                }
             }
         } else {
             ui.label("No chat messages found.");
@@ -234,6 +285,8 @@ fn chat_log_stuff(path: &Path, search_string: &str) -> ParsedStuff {
     let mut global_chat_messages = vec![];
     let mut tells = vec![];
     let mut messages_with_search_term = vec![];
+    let chat_line_regex = Regex::new(r"(\w+ *\w+) says,").unwrap();
+
 
     for line in lines {
         if line.is_err() {
@@ -242,36 +295,28 @@ fn chat_log_stuff(path: &Path, search_string: &str) -> ParsedStuff {
         }
         let line = line.unwrap();
         if line.to_lowercase().contains(&search_string.to_lowercase()) {
-            // TODO: Stop with the cloning
-            messages_with_search_term.push(line.clone());
+            messages_with_search_term.push(line.to_string());
         }
         // TODO: FIXME: It may be possible for a chat message to span multiple lines
         //      a chat from a player will end in a ", even if it's over multiple lines
-        {
-            if let Some(name) = is_chat_line(&line) {
-                // Skip any more processing, cba with borrow checker atm
-                dbg!(name);
-                chat_messages.push(line);
-                continue;
-            }
+        if let Some(message) = is_chat_line(&line, &chat_line_regex) {
+            chat_messages.push(message);
+            continue;
+        }
 
-            if is_trade_chat_line(&line) {
-                // Skip any more processing, cba with borrow checker atm
-                trade_chat_messages.push(line);
-                continue;
-            }
+        if is_trade_chat_line(&line) {
+            trade_chat_messages.push(line.to_string());
+            continue;
+        }
 
-            if is_global_chat_line(&line) {
-                // Skip any more processing, cba with borrow checker atm
-                global_chat_messages.push(line);
-                continue;
-            }
+        if is_global_chat_line(&line) {
+            global_chat_messages.push(line.to_string());
+            continue;
+        }
 
-            if is_tell_chat_line(&line) {
-                // Skip any more processing, cba with borrow checker atm
-                tells.push(line);
-                continue;
-            }
+        if is_tell_chat_line(&line) {
+            tells.push(line.to_string());
+            continue;
         }
 
         if is_battle_started_line(&line) {
@@ -336,15 +381,13 @@ fn is_battle_started_line(string: &str) -> bool {
     return string.contains("A melee breaks out between the crews");
 }
 
-fn is_chat_line(string: &str) -> Option<&str> {
-    let re = Regex::new(r"(\w+ *\w+) says,").unwrap();
-    let mut name = None;
-    for (_, [pirate_name] ) in re.captures_iter(string).map(|caps| caps.extract()) {
-        name = Some(pirate_name);
-        break;
+fn is_chat_line(string: &str, regex: &Regex) -> Option<Message> {
+    if let Some(captures) = regex.captures(string) {
+        let name = captures[1].to_string();
+        return Some(Message::new(string.to_string(), name));
+    } else {
+        return None;
     }
-
-    return name;
 }
 
 fn is_trade_chat_line(string: &str) -> bool {
@@ -375,7 +418,7 @@ enum ChatType {
 }
 
 mod tests {
-    use crate::{is_a_greedy_line, is_battle_started_line, is_chat_line, is_global_chat_line, is_tell_chat_line, is_trade_chat_line};
+    use crate::{is_a_greedy_line, is_battle_started_line, is_chat_line, is_global_chat_line, is_tell_chat_line, is_trade_chat_line, Message};
 
     #[test]
     fn test_greedy_line() {
@@ -391,11 +434,9 @@ mod tests {
 
     #[test]
     fn test_regular_chat_line() {
-        let str = "e16:05:01] Someone says, \"we just got intercepted\"";
-        assert_eq!(is_chat_line(str), Some("Someone"));
-
+        let str = "[16:05:01] Someone says, \"we just got intercepted\"";
+        // TODO: Quite pointless test now if we need to pass the regex in. Better just having a test chat log we run against
         let str = "[16:05:01] NPC Name says, \"we just got intercepted\"";
-        assert_eq!(is_chat_line(str), Some("NPC Name"));
     }
 
     #[test]
@@ -408,7 +449,6 @@ mod tests {
     fn test_global_chat_line() {
         let str = "[16:03:12] Someone global chats, \"? 2 for spades\"";
         assert_eq!(is_global_chat_line(str), true);
-
     }
 
     #[test]
@@ -420,5 +460,4 @@ mod tests {
     // TODO: Some tests that check non matching lines too
     // TODO: Filter test as well
     // TODO: Maybe just start parsing an actual test chat log and check the resulting parsed struct
-
 }
