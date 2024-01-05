@@ -25,6 +25,8 @@ struct ParsedStuff {
     trade_chat_messages: Vec<Message>,
     global_chat_messages: Vec<Message>,
     messages_with_search_term: Vec<String>,
+    last_line_read: usize,
+    total_lines_read: usize,
 }
 
 #[derive(Debug, PartialEq)]
@@ -285,12 +287,16 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str) -> Par
     let tell_chat_line_regex = Regex::new(&(sender_section_for_regex.clone() + " tells ye,")).unwrap();
 
 
+    let mut lines_read = 0;
+
     for line in lines {
+
         if line.is_err() {
             // TODO: Investigate what invalid utf8 we'd actually get
             continue;
         }
         let line = line.unwrap();
+        lines_read += 1;
         if line.to_lowercase().contains(&search_string.to_lowercase()) {
             messages_with_search_term.push(line.to_string());
         }
@@ -359,6 +365,8 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str) -> Par
         global_chat_messages,
         tells,
         messages_with_search_term,
+        last_line_read: lines_read,
+        total_lines_read: lines_read,
     };
     return parsed_stuff;
 }
@@ -520,6 +528,17 @@ mod tests {
         assert_eq!(parsed.tells[0].sender, "Someone");
         assert_eq!(parsed.tells[1].contents, double_name_string);
         assert_eq!(parsed.tells[1].sender, "Big Barry");
+    }
+
+    #[test]
+    fn test_lines_read_count() {
+        let single_name_string = "[16:05:04] Someone tells ye, \"2 for spades\"";
+        let log = format!("{}\n{}\n{}\n{}", single_name_string, single_name_string, single_name_string, single_name_string);
+        let reader = BufReader::new(log.as_bytes());
+        let parsed = parse_chat_log(reader, "");
+
+        assert_eq!(parsed.last_line_read, 4);
+        assert_eq!(parsed.total_lines_read, 4);
     }
 
     // TODO: Some tests that check non matching lines too
