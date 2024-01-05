@@ -277,7 +277,7 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str) -> Par
     let mut global_chat_messages = vec![];
     let mut tells = vec![];
     let mut messages_with_search_term = vec![];
-    let chat_line_regex = Regex::new(r"(\w+ *\w+) says,").unwrap();
+    let chat_line_regex = Regex::new(r"(\w+( |-*)?\w+) says,").unwrap();
     let trade_chat_line_regex = Regex::new(r"(\w+ *\w+) trade chats,").unwrap();
     let global_chat_line_regex = Regex::new(r"(\w+ *\w+) global chats,").unwrap();
     let tell_chat_line_regex = Regex::new(r"(\w+ *\w+) tells ye,").unwrap();
@@ -430,9 +430,9 @@ enum ChatType {
 mod tests {
     use std::io::BufReader;
 
-    use crate::{is_a_greedy_line, is_battle_started_line, is_global_chat_line, is_tell_chat_line, is_trade_chat_line, parse_chat_log};
+    use crate::{is_a_greedy_line, is_battle_started_line, parse_chat_log};
 
-    // TODO: Feels like we're testing the same thing over and over for each chat type, but they do have different regexes, so..?
+// TODO: Feels like we're testing the same thing over and over for each chat type, but they do have different regexes, so..?
 
     #[test]
     fn test_greedy_line() {
@@ -460,6 +460,16 @@ mod tests {
         assert_eq!(parsed.chat_messages[0].sender, "Someone");
         assert_eq!(parsed.chat_messages[1].contents, double_name_string);
         assert_eq!(parsed.chat_messages[1].sender, "NPC Name");
+    }
+
+    #[test]
+    fn test_hypen_name() {
+        let log = "[16:05:01] Someone-else says, \"we just got intercepted\"\"";
+        let reader = BufReader::new(log.as_bytes());
+        let parsed = parse_chat_log(reader, "");
+
+        assert_eq!(parsed.chat_messages[0].contents, log);
+        assert_eq!(parsed.chat_messages[0].sender, "Someone-else");
     }
 
     #[test]
