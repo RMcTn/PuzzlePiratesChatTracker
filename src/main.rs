@@ -2,11 +2,12 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
+use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use egui::{Color32, FontId, TextFormat, Ui};
+use egui::{Color32, Context, FontId, TextFormat, Ui};
 use regex::Regex;
 
 #[derive(Debug)]
@@ -104,35 +105,44 @@ fn main() {
         parse_chat_log(reader, &search_term, &mut parsed_stuff.lock().unwrap());
     }
 
+    let eframe_ctx = Arc::new(Mutex::new(None::<Context>));
+
     {
         let chat_log_path = chat_log_path.clone();
         let parsed_stuff = parsed_stuff.clone();
+        let eframe_ctx = eframe_ctx.clone();
 
         std::thread::spawn(move || {
             loop {
                 let now = Instant::now();
                 let time_since_last_reparse = now - last_reparse;
-                dbg!(time_since_last_reparse);
                 if time_since_last_reparse > timer_threshold { // || search_term != last_search_term {
                     dbg!("Reparsing");
                     if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
                         let reader = open_chat_log(path);
                         let search_term = "";
                         parse_chat_log(reader, &search_term, &mut parsed_stuff.lock().unwrap());
-                        // TODO: Message passage to UI thread to update when things change (remember search term too)
-                        // }
+                        match eframe_ctx.lock().unwrap().as_ref() {
+                            Some(ctx) => ctx.request_repaint(),
+                            None => (),
+                        }
                         last_reparse = Instant::now();
                     }
-
-                    std::thread::sleep(Duration::from_millis(500));
                 }
+                std::thread::sleep(Duration::from_millis(500));
             }
         });
     }
 
     let chat_log_path = chat_log_path.clone();
     let parsed_stuff = parsed_stuff.clone();
+    let mut ctx_been_cloned = false;
     eframe::run_simple_native("Greedy tracker", options, move |ctx, _frame| {
+        if !ctx_been_cloned {
+            *eframe_ctx.lock().unwrap() = Some(ctx.clone());
+            ctx_been_cloned = true;
+        }
+
         egui::CentralPanel::default().show(ctx, |mut ui| {
             if ui.button("Open chat log").clicked() {
                 if let Some(path) = rfd::FileDialog::new().pick_file() {
