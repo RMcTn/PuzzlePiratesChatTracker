@@ -20,9 +20,9 @@ struct Battle {
 struct ParsedStuff {
     battles: Vec<Battle>,
     chat_messages: Vec<Message>,
-    tells: Vec<String>,
-    trade_chat_messages: Vec<String>,
-    global_chat_messages: Vec<String>,
+    tells: Vec<Message>,
+    trade_chat_messages: Vec<Message>,
+    global_chat_messages: Vec<Message>,
     messages_with_search_term: Vec<String>,
 }
 
@@ -173,54 +173,41 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: Option<&ParsedStuff>, chat_type: ChatType)
         };
         ui.heading(heading);
         if let Some(parsed_stuff) = parsed_stuff {
-            let messages = &parsed_stuff.chat_messages;
-            let strings = match chat_type {
-                ChatType::Chat => None,
-                ChatType::Trade => Some(&parsed_stuff.trade_chat_messages),
-                ChatType::Global => Some(&parsed_stuff.global_chat_messages),
-                ChatType::Tell => Some(&parsed_stuff.tells),
+            let messages = match chat_type {
+                ChatType::Chat => &parsed_stuff.chat_messages,
+                ChatType::Trade => &parsed_stuff.trade_chat_messages,
+                ChatType::Global => &parsed_stuff.global_chat_messages,
+                ChatType::Tell => &parsed_stuff.tells,
             };
-            if strings.is_none() {
-                for (i, message) in messages.iter().rev().enumerate() {
-                    let message_limit = 100;
-                    if i >= message_limit {
-                        break;
-                    }
 
-                    ui.separator();
-                    let mut job = egui::text::LayoutJob::default();
-
-                    let start = message.contents.find(&message.sender).unwrap();
-                    let end = start + message.sender.len();
-                    job.append(&message.contents[0..start], 0.0, TextFormat {
-                        font_id: FontId::default(),
-                        color: Color32::DARK_GRAY,
-                        ..Default::default()
-                    });
-                    job.append(&message.contents[start..end], 0.0, TextFormat {
-                        font_id: FontId::default(),
-                        color: Color32::BLUE,
-                        ..Default::default()
-                    });
-                    job.append(&message.contents[end..message.contents.len()], 0.0, TextFormat {
-                        font_id: FontId::default(),
-                        color: Color32::DARK_GRAY,
-                        ..Default::default()
-                    });
-                    let text = ui.fonts(|f| f.layout_job(job));
-                    ui.label(text);
+            for (i, message) in messages.iter().rev().enumerate() {
+                let message_limit = 100;
+                if i >= message_limit {
+                    break;
                 }
-            } else {
-                let strings = strings.unwrap();
-                for (i, message) in strings.iter().rev().enumerate() {
-                    let message_limit = 100;
-                    if i >= message_limit {
-                        break;
-                    }
 
-                    ui.separator();
-                    ui.label(message);
-                }
+                ui.separator();
+                let mut job = egui::text::LayoutJob::default();
+
+                let start = message.contents.find(&message.sender).unwrap();
+                let end = start + message.sender.len();
+                job.append(&message.contents[0..start], 0.0, TextFormat {
+                    font_id: FontId::default(),
+                    color: Color32::DARK_GRAY,
+                    ..Default::default()
+                });
+                job.append(&message.contents[start..end], 0.0, TextFormat {
+                    font_id: FontId::default(),
+                    color: Color32::BLUE,
+                    ..Default::default()
+                });
+                job.append(&message.contents[end..message.contents.len()], 0.0, TextFormat {
+                    font_id: FontId::default(),
+                    color: Color32::DARK_GRAY,
+                    ..Default::default()
+                });
+                let text = ui.fonts(|f| f.layout_job(job));
+                ui.label(text);
             }
         } else {
             ui.label("No chat messages found.");
@@ -291,6 +278,9 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str) -> Par
     let mut tells = vec![];
     let mut messages_with_search_term = vec![];
     let chat_line_regex = Regex::new(r"(\w+ *\w+) says,").unwrap();
+    let trade_chat_line_regex = Regex::new(r"(\w+ *\w+) trade chats,").unwrap();
+    let global_chat_line_regex = Regex::new(r"(\w+ *\w+) global chats,").unwrap();
+    let tell_chat_line_regex = Regex::new(r"(\w+ *\w+) tells ye,").unwrap();
 
 
     for line in lines {
@@ -309,18 +299,18 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str) -> Par
             continue;
         }
 
-        if is_trade_chat_line(&line) {
-            trade_chat_messages.push(line.to_string());
+        if let Some(message) = is_trade_chat_line(&line, &trade_chat_line_regex) {
+            trade_chat_messages.push(message);
             continue;
         }
 
-        if is_global_chat_line(&line) {
-            global_chat_messages.push(line.to_string());
+        if let Some(message) = is_global_chat_line(&line, &global_chat_line_regex) {
+            global_chat_messages.push(message);
             continue;
         }
 
-        if is_tell_chat_line(&line) {
-            tells.push(line.to_string());
+        if let Some(message) = is_tell_chat_line(&line, &tell_chat_line_regex) {
+            tells.push(message);
             continue;
         }
 
@@ -395,16 +385,31 @@ fn is_chat_line(string: &str, regex: &Regex) -> Option<Message> {
     }
 }
 
-fn is_trade_chat_line(string: &str) -> bool {
-    return string.contains("trade chats,");
+fn is_trade_chat_line(string: &str, regex: &Regex) -> Option<Message> {
+    if let Some(captures) = regex.captures(string) {
+        let name = captures[1].to_string();
+        return Some(Message::new(string.to_string(), name));
+    } else {
+        return None;
+    }
 }
 
-fn is_global_chat_line(string: &str) -> bool {
-    return string.contains("global chats,");
+fn is_global_chat_line(string: &str, regex: &Regex) -> Option<Message> {
+    if let Some(captures) = regex.captures(string) {
+        let name = captures[1].to_string();
+        return Some(Message::new(string.to_string(), name));
+    } else {
+        return None;
+    }
 }
 
-fn is_tell_chat_line(string: &str) -> bool {
-    return string.contains("tells ye,");
+fn is_tell_chat_line(string: &str, regex: &Regex) -> Option<Message> {
+    if let Some(captures) = regex.captures(string) {
+        let name = captures[1].to_string();
+        return Some(Message::new(string.to_string(), name));
+    } else {
+        return None;
+    }
 }
 
 #[derive(PartialEq, Copy, Clone)]
@@ -423,10 +428,11 @@ enum ChatType {
 }
 
 mod tests {
-    use std::io::{BufReader, Read};
+    use std::io::BufReader;
 
     use crate::{is_a_greedy_line, is_battle_started_line, is_global_chat_line, is_tell_chat_line, is_trade_chat_line, parse_chat_log};
 
+    // TODO: Feels like we're testing the same thing over and over for each chat type, but they do have different regexes, so..?
 
     #[test]
     fn test_greedy_line() {
@@ -458,23 +464,52 @@ mod tests {
 
     #[test]
     fn test_trade_chat_line() {
-        let str = "[16:05:04] Someone trade chats, \"? Buying weavery or plot on barb or arakoua ?  Selling cookies 250 ea, no pink\"";
-        assert_eq!(is_trade_chat_line(str), true);
+        let single_name_string = "[16:05:04] Someone trade chats, \"? Buying weavery or plot on barb or arakoua\"";
+        let double_name_string = "[16:05:04] Big Barry trade chats, \"? Buying weavery or plot on barb or arakoua\"";
+
+        let log = format!("{}\n{}", single_name_string, double_name_string);
+        let reader = BufReader::new(log.as_bytes());
+
+        let parsed = parse_chat_log(reader, "");
+        assert_eq!(parsed.trade_chat_messages.len(), 2);
+        assert_eq!(parsed.trade_chat_messages[0].contents, single_name_string);
+        assert_eq!(parsed.trade_chat_messages[0].sender, "Someone");
+        assert_eq!(parsed.trade_chat_messages[1].contents, double_name_string);
+        assert_eq!(parsed.trade_chat_messages[1].sender, "Big Barry");
     }
 
     #[test]
     fn test_global_chat_line() {
-        let str = "[16:03:12] Someone global chats, \"? 2 for spades\"";
-        assert_eq!(is_global_chat_line(str), true);
+        let single_name_string = "[16:05:04] Someone global chats, \"2 for spades\"";
+        let double_name_string = "[16:05:04] Big Barry global chats, \"2 for spades\"";
+
+        let log = format!("{}\n{}", single_name_string, double_name_string);
+        let reader = BufReader::new(log.as_bytes());
+
+        let parsed = parse_chat_log(reader, "");
+        assert_eq!(parsed.global_chat_messages.len(), 2);
+        assert_eq!(parsed.global_chat_messages[0].contents, single_name_string);
+        assert_eq!(parsed.global_chat_messages[0].sender, "Someone");
+        assert_eq!(parsed.global_chat_messages[1].contents, double_name_string);
+        assert_eq!(parsed.global_chat_messages[1].sender, "Big Barry");
     }
 
     #[test]
     fn test_tell_chat_line() {
-        let str = "[16:03:12] Someone tells ye, \"? 2 for spades\"";
-        assert_eq!(is_tell_chat_line(str), true);
+        let single_name_string = "[16:05:04] Someone tells ye, \"2 for spades\"";
+        let double_name_string = "[16:05:04] Big Barry tells ye, \"2 for spades\"";
+
+        let log = format!("{}\n{}", single_name_string, double_name_string);
+        let reader = BufReader::new(log.as_bytes());
+
+        let parsed = parse_chat_log(reader, "");
+        assert_eq!(parsed.tells.len(), 2);
+        assert_eq!(parsed.tells[0].contents, single_name_string);
+        assert_eq!(parsed.tells[0].sender, "Someone");
+        assert_eq!(parsed.tells[1].contents, double_name_string);
+        assert_eq!(parsed.tells[1].sender, "Big Barry");
     }
 
     // TODO: Some tests that check non matching lines too
     // TODO: Filter test as well
-    // TODO: Maybe just start parsing an actual test chat log and check the resulting parsed struct
 }
