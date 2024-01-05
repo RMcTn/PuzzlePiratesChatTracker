@@ -6,6 +6,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use egui::Ui;
+use regex::Regex;
 
 #[derive(Debug)]
 struct Battle {
@@ -33,9 +34,8 @@ fn main() {
     // TODO: "trade chats" tab
     // TODO: "tells chat" tab
     // TODO: Warning if chat log is over a certain size?
-    // TODO: Filters for the chat tab? Search by word, pirate name etc
+    // TODO: Filters for the chat tab? Search by word, pirate name etc - Expand to allow for multiple word searches (allow regex?)
     // TODO: Configurable delay
-    // TODO: File picker
     // TODO: Error on failed parse (wrong file given for example)
     // TODO: Unread indicator on chat tabs
     // TODO: Combined chat tab?
@@ -248,8 +248,9 @@ fn chat_log_stuff(path: &Path, search_string: &str) -> ParsedStuff {
         // TODO: FIXME: It may be possible for a chat message to span multiple lines
         //      a chat from a player will end in a ", even if it's over multiple lines
         {
-            if is_chat_line(&line) {
+            if let Some(name) = is_chat_line(&line) {
                 // Skip any more processing, cba with borrow checker atm
+                dbg!(name);
                 chat_messages.push(line);
                 continue;
             }
@@ -335,8 +336,15 @@ fn is_battle_started_line(string: &str) -> bool {
     return string.contains("A melee breaks out between the crews");
 }
 
-fn is_chat_line(string: &str) -> bool {
-    return string.contains("says,");
+fn is_chat_line(string: &str) -> Option<&str> {
+    let re = Regex::new(r"(\w+ *\w+) says,").unwrap();
+    let mut name = None;
+    for (_, [pirate_name] ) in re.captures_iter(string).map(|caps| caps.extract()) {
+        name = Some(pirate_name);
+        break;
+    }
+
+    return name;
 }
 
 fn is_trade_chat_line(string: &str) -> bool {
@@ -383,8 +391,11 @@ mod tests {
 
     #[test]
     fn test_regular_chat_line() {
-        let str = "[16:05:01] Someone says, \"we just got intercepted\"";
-        assert_eq!(is_chat_line(str), true);
+        let str = "e16:05:01] Someone says, \"we just got intercepted\"";
+        assert_eq!(is_chat_line(str), Some("Someone"));
+
+        let str = "[16:05:01] NPC Name says, \"we just got intercepted\"";
+        assert_eq!(is_chat_line(str), Some("NPC Name"));
     }
 
     #[test]
