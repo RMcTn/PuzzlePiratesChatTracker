@@ -3,6 +3,7 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use egui::{Color32, FontId, TextFormat, Ui};
@@ -73,24 +74,22 @@ fn main() {
     // TODO: Combined chat tab?
     // TODO: Alert/Sound/Notification on chat containing search term
     // TODO: Text should be selectable in chat tabs at least
-    // TODO: Colour pirate names in chat tabs? Will need to store some extra info with our chat messages, like the sender, and then find the index of the start and hopefully be able to highlight certain label text in egui
-    // TODO: Tells from NPCs should be handled? These can be multiple words with spaces between for the name before the "tells ye" part
     // TODO: Parse the date from the chat log too (format is "====== 2023/12/27 ======")
+    // TODO: Redraw UI even when not focussed. Might need to do the chat log parsing in a background thread
 
-    // TODO: FIXME: Make message matching more reliable than just "string contains x" (there is a format to the messages, use that - [timestamp] <pirate-name> says <content> - Likewise with trade + global)
-    let mut chat_log_path = None;
+    let mut chat_log_path = Arc::new(Mutex::new(None));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default(),
         ..Default::default()
     };
 
-    let mut parsed_stuff = ParsedStuff::new();
+    let mut parsed_stuff = Arc::new(Mutex::new(ParsedStuff::new()));
 
     let config_path = Path::new("greedy-tracker.conf");
 
     if let Ok(contents) = fs::read_to_string(config_path) {
         // TODO: FIXME: Don't assume only the path is there for
-        chat_log_path = Some(Path::new(&contents).to_path_buf());
+        *chat_log_path.lock().unwrap() = Some(Path::new(&contents).to_path_buf());
     };
 
     let mut selected_panel = Tabs::GreedyHits;
@@ -100,17 +99,45 @@ fn main() {
     let mut last_search_term = String::new();
     let mut search_term = String::new();
 
-    if let Some(path) = &chat_log_path {
+    if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
         let reader = open_chat_log(path);
-        parse_chat_log(reader, &search_term, &mut parsed_stuff);
+        parse_chat_log(reader, &search_term, &mut parsed_stuff.lock().unwrap());
     }
 
+    {
+        let chat_log_path = chat_log_path.clone();
+        let parsed_stuff = parsed_stuff.clone();
+
+        std::thread::spawn(move || {
+            loop {
+                let now = Instant::now();
+                let time_since_last_reparse = now - last_reparse;
+                dbg!(time_since_last_reparse);
+                if time_since_last_reparse > timer_threshold { // || search_term != last_search_term {
+                    dbg!("Reparsing");
+                    if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
+                        let reader = open_chat_log(path);
+                        let search_term = "";
+                        parse_chat_log(reader, &search_term, &mut parsed_stuff.lock().unwrap());
+                        // TODO: Message passage to UI thread to update when things change (remember search term too)
+                        // }
+                        last_reparse = Instant::now();
+                    }
+
+                    std::thread::sleep(Duration::from_millis(500));
+                }
+            }
+        });
+    }
+
+    let chat_log_path = chat_log_path.clone();
+    let parsed_stuff = parsed_stuff.clone();
     eframe::run_simple_native("Greedy tracker", options, move |ctx, _frame| {
         egui::CentralPanel::default().show(ctx, |mut ui| {
             if ui.button("Open chat log").clicked() {
                 if let Some(path) = rfd::FileDialog::new().pick_file() {
                     // Wipe our progress on reload
-                    chat_log_path = Some(path.clone());
+                    *chat_log_path.lock().unwrap() = Some(path.clone());
 
                     if let Ok(mut file) = File::create(config_path) {
                         file.write_all(path.to_string_lossy().as_bytes()).unwrap();
@@ -122,25 +149,16 @@ fn main() {
                 // TODO: Drag and drop file
             }
             if ui.button("Reload chat log").clicked() {
-                if let Some(path) = &chat_log_path {
+                if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
                     let reader = open_chat_log(path);
                     // Wipe our progress on reload
-                    parsed_stuff = ParsedStuff::new();
-                    parse_chat_log(reader, &search_term, &mut parsed_stuff);
+                    *parsed_stuff.lock().unwrap() = ParsedStuff::new();
+                    //  TODO: Might want to send a message to the background thread instead of doing this parse here
+                    parse_chat_log(reader, &search_term, &mut parsed_stuff.lock().unwrap());
                 }
             }
-            if ui.ctx().has_requested_repaint() {
-                let now = Instant::now();
-                let time_since_last_reparse = now - last_reparse;
-                if time_since_last_reparse > timer_threshold || search_term != last_search_term {
-                    dbg!("Running repaint");
-                    if let Some(path) = &chat_log_path {
-                        let reader = open_chat_log(path);
-                        parse_chat_log(reader, &search_term, &mut parsed_stuff);
-                    }
-                    last_reparse = Instant::now();
-                }
-            }
+
+            if ui.ctx().has_requested_repaint() {}
 
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut selected_panel, Tabs::GreedyHits, "Greedies");
@@ -152,9 +170,9 @@ fn main() {
             });
 
             match selected_panel {
-                Tabs::GreedyHits => greedy_ui(&mut ui, &parsed_stuff),
-                Tabs::Chat(chat_type) => chat_ui(&mut ui, &parsed_stuff, chat_type),
-                Tabs::SearchTerm => search_chat_ui(&mut ui, &parsed_stuff, &mut search_term),
+                Tabs::GreedyHits => greedy_ui(&mut ui, &parsed_stuff.lock().unwrap()),
+                Tabs::Chat(chat_type) => chat_ui(&mut ui, &parsed_stuff.lock().unwrap(), chat_type),
+                Tabs::SearchTerm => search_chat_ui(&mut ui, &parsed_stuff.lock().unwrap(), &mut search_term),
             }
         });
     }).unwrap();
