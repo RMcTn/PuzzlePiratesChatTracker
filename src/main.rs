@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -18,7 +18,7 @@ struct Battle {
 
 #[derive(Debug)]
 struct ParsedStuff {
-    battles: Vec<Battle>,
+    battles: VecDeque<Battle>,
     chat_messages: Vec<Message>,
     tells: Vec<Message>,
     trade_chat_messages: Vec<Message>,
@@ -31,7 +31,7 @@ struct ParsedStuff {
 impl ParsedStuff {
     fn new() -> Self {
         return ParsedStuff {
-            battles: vec![],
+            battles: VecDeque::new(),
             chat_messages: vec![],
             tells: vec![],
             trade_chat_messages: vec![],
@@ -345,14 +345,14 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
                 defender_ship,
                 attacker_ship,
             };
-            parsed.battles.push(battle);
+            parsed.battles.push_front(battle);
             continue;
         }
 
         if in_battle && is_a_greedy_line(&line) {
             let splits: Vec<&str> = line.split(" ").collect();
             let pirate_name = splits[1];
-            let mut battle: &mut Battle = parsed.battles.last_mut().unwrap();
+            let mut battle: &mut Battle = parsed.battles.front_mut().unwrap();
             let mut greedies = &mut battle.greedies;
 
             *greedies.entry(pirate_name.to_string()).or_default() += 1;
@@ -366,8 +366,6 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
             in_battle = false;
         }
     }
-
-    parsed.battles.reverse();
 }
 
 
