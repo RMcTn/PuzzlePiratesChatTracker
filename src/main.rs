@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fs;
 use std::fs::File;
@@ -277,10 +278,11 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str) -> Par
     let mut global_chat_messages = vec![];
     let mut tells = vec![];
     let mut messages_with_search_term = vec![];
-    let chat_line_regex = Regex::new(r"(\w+( |-*)?\w+) says,").unwrap();
-    let trade_chat_line_regex = Regex::new(r"(\w+ *\w+) trade chats,").unwrap();
-    let global_chat_line_regex = Regex::new(r"(\w+ *\w+) global chats,").unwrap();
-    let tell_chat_line_regex = Regex::new(r"(\w+ *\w+) tells ye,").unwrap();
+    let sender_section_for_regex = r"(\w+( |-*)?\w+)".to_string();
+    let chat_line_regex = Regex::new(&(sender_section_for_regex.clone() + " says,")).unwrap();
+    let trade_chat_line_regex = Regex::new(&(sender_section_for_regex.clone() + " trade chats,")).unwrap();
+    let global_chat_line_regex = Regex::new(&(sender_section_for_regex.clone() + " global chats,")).unwrap();
+    let tell_chat_line_regex = Regex::new(&(sender_section_for_regex.clone() + " tells ye,")).unwrap();
 
 
     for line in lines {
