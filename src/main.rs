@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use egui::{Color32, Context, FontId, TextFormat, Ui};
+use egui::text::LayoutJob;
 use regex::Regex;
 
 #[derive(Debug)]
@@ -25,7 +26,7 @@ struct ParsedStuff {
     tells: Vec<Message>,
     trade_chat_messages: Vec<Message>,
     global_chat_messages: Vec<Message>,
-    messages_with_search_term: Vec<String>,
+    messages_with_search_term: Vec<Message>,
     last_line_read: usize,
     total_lines_read: usize,
 }
@@ -78,6 +79,7 @@ fn main() {
     // TODO: Parse the date from the chat log too (format is "====== 2023/12/27 ======")
     // TODO: Force a reparse when search term updates (with debounce period?)
     // TODO: Wrap message text (just overflows window at the moment)
+    // TODO: Store timestamp with message, so search term results can be ordered by time
 
     let mut chat_log_path = Arc::new(Mutex::new(None));
     let options = eframe::NativeOptions {
@@ -206,9 +208,34 @@ fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, mut search_term: &mut
             }
 
             ui.separator();
-            ui.label(message);
+            let job = colorize_message(&message);
+            let text = ui.fonts(|f| f.layout_job(job));
+            ui.label(text);
         }
     });
+}
+
+fn colorize_message(message: &Message) -> LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+
+    let start = message.contents.find(&message.sender).unwrap();
+    let end = start + message.sender.len();
+    job.append(&message.contents[0..start], 0.0, TextFormat {
+        font_id: FontId::default(),
+        color: Color32::DARK_GRAY,
+        ..Default::default()
+    });
+    job.append(&message.contents[start..end], 0.0, TextFormat {
+        font_id: FontId::default(),
+        color: Color32::BLUE,
+        ..Default::default()
+    });
+    job.append(&message.contents[end..message.contents.len()], 0.0, TextFormat {
+        font_id: FontId::default(),
+        color: Color32::DARK_GRAY,
+        ..Default::default()
+    });
+    return job;
 }
 
 fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, chat_type: ChatType) {
@@ -237,25 +264,7 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, chat_type: ChatType) {
             }
 
             ui.separator();
-            let mut job = egui::text::LayoutJob::default();
-
-            let start = message.contents.find(&message.sender).unwrap();
-            let end = start + message.sender.len();
-            job.append(&message.contents[0..start], 0.0, TextFormat {
-                font_id: FontId::default(),
-                color: Color32::DARK_GRAY,
-                ..Default::default()
-            });
-            job.append(&message.contents[start..end], 0.0, TextFormat {
-                font_id: FontId::default(),
-                color: Color32::BLUE,
-                ..Default::default()
-            });
-            job.append(&message.contents[end..message.contents.len()], 0.0, TextFormat {
-                font_id: FontId::default(),
-                color: Color32::DARK_GRAY,
-                ..Default::default()
-            });
+            let job = colorize_message(&message);
             let text = ui.fonts(|f| f.layout_job(job));
             ui.label(text);
         }
@@ -396,22 +405,22 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
     if !search_string.is_empty() {
         for msg in &parsed.chat_messages {
             if msg.contents.to_lowercase().contains(&search_string.to_lowercase()) {
-                parsed.messages_with_search_term.push(msg.contents.clone());
+                parsed.messages_with_search_term.push(msg.clone());
             }
         }
         for msg in &parsed.trade_chat_messages {
             if msg.contents.to_lowercase().contains(&search_string.to_lowercase()) {
-                parsed.messages_with_search_term.push(msg.contents.clone());
+                parsed.messages_with_search_term.push(msg.clone());
             }
         }
         for msg in &parsed.global_chat_messages {
             if msg.contents.to_lowercase().contains(&search_string.to_lowercase()) {
-                parsed.messages_with_search_term.push(msg.contents.clone());
+                parsed.messages_with_search_term.push(msg.clone());
             }
         }
         for msg in &parsed.tells {
             if msg.contents.to_lowercase().contains(&search_string.to_lowercase()) {
-                parsed.messages_with_search_term.push(msg.contents.clone());
+                parsed.messages_with_search_term.push(msg.clone());
             }
         }
     }
