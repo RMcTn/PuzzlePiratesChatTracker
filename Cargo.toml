@@ -10,3 +10,4 @@ eframe = "0.24.1"
 egui = "0.24.1"
 regex = "1.10.2"
 rfd = "0.12.1"
+time = { version = "0.3.31", features = ["parsing", "macros"] }
