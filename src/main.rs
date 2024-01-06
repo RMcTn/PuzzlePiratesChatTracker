@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use egui::{Color32, Context, FontId, TextFormat, Ui};
 use egui::text::LayoutJob;
 use regex::{Captures, Regex};
-use time::{Date, format_description, OffsetDateTime, PrimitiveDateTime, Time};
+use time::{Date, Time};
 use time::macros::format_description;
 
 #[derive(Debug)]
@@ -56,6 +56,7 @@ struct Message {
     timestamp: Time,
     contents: String,
     sender: String,
+    // Need to decide what a message that has no date means for sorting on search results.
     date: Option<Date>,
 }
 
@@ -87,6 +88,7 @@ fn main() {
     // TODO: Text should be selectable in chat tabs at least
     // TODO: Force a reparse when search term updates (with debounce period?)
     // TODO: Wrap message text (just overflows window at the moment)
+    // TODO: Look into the invalid utf-8 errors we get from the chat log, might be useful encoded data?
 
     let mut chat_log_path = Arc::new(Mutex::new(None));
     let options = eframe::NativeOptions {
@@ -350,13 +352,14 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
     // FIXME(?): TODO: Assuming the chat log will never be pruned or truncated in some way whilst the parser is running. Otherwise our starting line could be beyond what the file's actual size is now. We could warn the user, if we kept track of how many lines we've seen in this parse attempt (couldn't just skip x lines any more, we'd need to iterate through everything and sum it up, but might not actually matter performance wise to count per line), and compare it to total_lines_read (if < warn user)
 
     for line in lines.skip(starting_line) {
+        parsed.last_line_read += 1;
+        parsed.total_lines_read += 1;
+
         if line.is_err() {
             // TODO: Investigate what invalid utf8 we'd actually get
             continue;
         }
         let line = line.unwrap();
-        parsed.last_line_read += 1;
-        parsed.total_lines_read += 1;
 
         if let Some(captures) = date_seperator_regex.captures(&line) {
             let date = &captures[1];
@@ -527,6 +530,7 @@ enum ChatType {
 
 mod tests {
     use std::io::BufReader;
+
     use time::Month;
 
     use crate::{is_a_greedy_line, is_battle_started_line, parse_chat_log, ParsedStuff};
