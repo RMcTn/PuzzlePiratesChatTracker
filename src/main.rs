@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use egui::{Color32, Context, FontId, TextFormat, Ui};
 use egui::text::LayoutJob;
 use regex::{Captures, Regex};
-use time::{format_description, OffsetDateTime, PrimitiveDateTime, Time};
+use time::{Date, format_description, OffsetDateTime, PrimitiveDateTime, Time};
 use time::macros::format_description;
 
 #[derive(Debug)]
@@ -31,6 +31,8 @@ struct ParsedStuff {
     messages_with_search_term: Vec<Message>,
     last_line_read: usize,
     total_lines_read: usize,
+    // NOTE: Saying this is optional for now. Haven't thought enough about it
+    current_date: Option<Date>,
 }
 
 impl ParsedStuff {
@@ -44,6 +46,7 @@ impl ParsedStuff {
             messages_with_search_term: vec![],
             last_line_read: 0,
             total_lines_read: 0,
+            current_date: None,
         };
     }
 }
@@ -53,6 +56,7 @@ struct Message {
     timestamp: Time,
     contents: String,
     sender: String,
+    date: Option<Date>,
 }
 
 impl Message {
@@ -61,6 +65,7 @@ impl Message {
             contents,
             sender,
             timestamp,
+            date: None,
         };
     }
 }
@@ -80,10 +85,8 @@ fn main() {
     // TODO: Combined chat tab?
     // TODO: Alert/Sound/Notification on chat containing search term
     // TODO: Text should be selectable in chat tabs at least
-    // TODO: Parse the date from the chat log too (format is "====== 2023/12/27 ======")
     // TODO: Force a reparse when search term updates (with debounce period?)
     // TODO: Wrap message text (just overflows window at the moment)
-    // TODO: Store timestamp with message, so search term results can be ordered by time
 
     let mut chat_log_path = Arc::new(Mutex::new(None));
     let options = eframe::NativeOptions {
@@ -339,6 +342,9 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
     let global_chat_line_regex = Regex::new(&(regex_bits.clone() + " global chats,")).unwrap();
     let tell_chat_line_regex = Regex::new(&(regex_bits.clone() + " tells ye,")).unwrap();
 
+    let date_seperator_regex = Regex::new(r"={5} (\d\d\d\d/\d\d/\d\d) ={5}").unwrap();
+    let date_format = format_description!("[year]/[month]/[day]");
+
 
     let starting_line = parsed.last_line_read;
     // FIXME(?): TODO: Assuming the chat log will never be pruned or truncated in some way whilst the parser is running. Otherwise our starting line could be beyond what the file's actual size is now. We could warn the user, if we kept track of how many lines we've seen in this parse attempt (couldn't just skip x lines any more, we'd need to iterate through everything and sum it up, but might not actually matter performance wise to count per line), and compare it to total_lines_read (if < warn user)
@@ -351,24 +357,35 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
         let line = line.unwrap();
         parsed.last_line_read += 1;
         parsed.total_lines_read += 1;
+
+        if let Some(captures) = date_seperator_regex.captures(&line) {
+            let date = &captures[1];
+            let date = Date::parse(date, &date_format).unwrap();
+            parsed.current_date = Some(date);
+        }
+
         // TODO: FIXME: It may be possible for a chat message to span multiple lines
         //      a chat from a player will end in a ", even if it's over multiple lines
-        if let Some(message) = is_chat_line(&line, &chat_line_regex) {
+        if let Some(mut message) = is_chat_line(&line, &chat_line_regex) {
+            message.date = parsed.current_date;
             parsed.chat_messages.push(message);
             continue;
         }
 
-        if let Some(message) = is_trade_chat_line(&line, &trade_chat_line_regex) {
+        if let Some(mut message) = is_trade_chat_line(&line, &trade_chat_line_regex) {
+            message.date = parsed.current_date;
             parsed.trade_chat_messages.push(message);
             continue;
         }
 
-        if let Some(message) = is_global_chat_line(&line, &global_chat_line_regex) {
+        if let Some(mut message) = is_global_chat_line(&line, &global_chat_line_regex) {
+            message.date = parsed.current_date;
             parsed.global_chat_messages.push(message);
             continue;
         }
 
-        if let Some(message) = is_tell_chat_line(&line, &tell_chat_line_regex) {
+        if let Some(mut message) = is_tell_chat_line(&line, &tell_chat_line_regex) {
+            message.date = parsed.current_date;
             parsed.tells.push(message);
             continue;
         }
@@ -510,6 +527,7 @@ enum ChatType {
 
 mod tests {
     use std::io::BufReader;
+    use time::Month;
 
     use crate::{is_a_greedy_line, is_battle_started_line, parse_chat_log, ParsedStuff};
 
@@ -555,6 +573,23 @@ mod tests {
         assert_eq!(time.hour(), 16);
         assert_eq!(time.minute(), 05);
         assert_eq!(time.second(), 01);
+    }
+
+    #[test]
+    fn test_date_parsing() {
+        let chat_string = "[16:05:01] Someone says, \"we just got intercepted\"\"";
+        let date_string = "===== 2024/01/06 =====";
+        let other_chat_string = "[16:05:05] Someone-else says, \"we just got intercepted\"\"";
+        let log = format!("{}\n{}\n{}", chat_string, date_string, other_chat_string);
+        let reader = BufReader::new(log.as_bytes());
+        let mut parsed = ParsedStuff::new();
+
+        parse_chat_log(reader, "", &mut parsed);
+        assert_eq!(parsed.chat_messages[0].date, None);
+        let date = parsed.chat_messages[1].date.unwrap();
+        assert_eq!(date.year(), 2024);
+        assert_eq!(date.month(), Month::January);
+        assert_eq!(date.day(), 06);
     }
 
     #[test]
