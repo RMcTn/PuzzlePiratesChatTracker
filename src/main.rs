@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 
 use egui::{Color32, Context, FontId, TextFormat, Ui};
 use egui::text::LayoutJob;
-use regex::Regex;
+use regex::{Captures, Regex};
+use time::{format_description, OffsetDateTime, PrimitiveDateTime, Time};
+use time::macros::format_description;
 
 #[derive(Debug)]
 struct Battle {
@@ -48,15 +50,17 @@ impl ParsedStuff {
 
 #[derive(Debug, PartialEq, Clone)]
 struct Message {
+    timestamp: Time,
     contents: String,
     sender: String,
 }
 
 impl Message {
-    fn new(contents: String, sender: String) -> Self {
+    fn new(contents: String, sender: String, timestamp: Time) -> Self {
         return Message {
             contents,
             sender,
+            timestamp,
         };
     }
 }
@@ -218,19 +222,19 @@ fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, mut search_term: &mut
 fn colorize_message(message: &Message) -> LayoutJob {
     let mut job = egui::text::LayoutJob::default();
 
-    let start = message.contents.find(&message.sender).unwrap();
-    let end = start + message.sender.len();
-    job.append(&message.contents[0..start], 0.0, TextFormat {
+    let sender_start = message.contents.find(&message.sender).unwrap();
+    let sender_end = sender_start + message.sender.len();
+    job.append(&message.contents[0..sender_start], 0.0, TextFormat {
         font_id: FontId::default(),
         color: Color32::DARK_GRAY,
         ..Default::default()
     });
-    job.append(&message.contents[start..end], 0.0, TextFormat {
+    job.append(&message.contents[sender_start..sender_end], 0.0, TextFormat {
         font_id: FontId::default(),
         color: Color32::BLUE,
         ..Default::default()
     });
-    job.append(&message.contents[end..message.contents.len()], 0.0, TextFormat {
+    job.append(&message.contents[sender_end..message.contents.len()], 0.0, TextFormat {
         font_id: FontId::default(),
         color: Color32::DARK_GRAY,
         ..Default::default()
@@ -327,11 +331,13 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
     let mut in_battle = false;
     let mut battle_count = 0;
 
-    let sender_section_for_regex = r"(\w+( |-*)?\w+)".to_string();
-    let chat_line_regex = Regex::new(&(sender_section_for_regex.clone() + " says,")).unwrap();
-    let trade_chat_line_regex = Regex::new(&(sender_section_for_regex.clone() + " trade chats,")).unwrap();
-    let global_chat_line_regex = Regex::new(&(sender_section_for_regex.clone() + " global chats,")).unwrap();
-    let tell_chat_line_regex = Regex::new(&(sender_section_for_regex.clone() + " tells ye,")).unwrap();
+    let timestamp_regex = r"\[(\d\d:\d\d:\d\d)\]".to_string();
+    let sender_section_for_regex = r" (\w+( |-*)?\w+)".to_string();
+    let regex_bits = timestamp_regex + &sender_section_for_regex;
+    let chat_line_regex = Regex::new(&(regex_bits.clone() + " says,")).unwrap();
+    let trade_chat_line_regex = Regex::new(&(regex_bits.clone() + " trade chats,")).unwrap();
+    let global_chat_line_regex = Regex::new(&(regex_bits.clone() + " global chats,")).unwrap();
+    let tell_chat_line_regex = Regex::new(&(regex_bits.clone() + " tells ye,")).unwrap();
 
 
     let starting_line = parsed.last_line_read;
@@ -441,10 +447,23 @@ fn is_battle_started_line(string: &str) -> bool {
     return string.contains("A melee breaks out between the crews");
 }
 
+/// Timestamp should be in the format [hour:minute:second]
+fn get_time_from_timestamp(timestamp: &str) -> Time {
+    let timestamp_format = format_description!("[hour]:[minute]:[second]");
+    // TODO: Handle timestamp parse failure
+    let timestamp = time::Time::parse(&timestamp, &timestamp_format).unwrap();
+    return timestamp;
+}
+
+fn message_from_captures(captures: &Captures, chat_message: &str) -> Message {
+    let timestamp = captures[1].to_string();
+    let name = captures[2].to_string();
+    return Message::new(chat_message.to_string(), name, get_time_from_timestamp(&timestamp));
+}
+
 fn is_chat_line(string: &str, regex: &Regex) -> Option<Message> {
     if let Some(captures) = regex.captures(string) {
-        let name = captures[1].to_string();
-        return Some(Message::new(string.to_string(), name));
+        return Some(message_from_captures(&captures, string));
     } else {
         return None;
     }
@@ -452,8 +471,7 @@ fn is_chat_line(string: &str, regex: &Regex) -> Option<Message> {
 
 fn is_trade_chat_line(string: &str, regex: &Regex) -> Option<Message> {
     if let Some(captures) = regex.captures(string) {
-        let name = captures[1].to_string();
-        return Some(Message::new(string.to_string(), name));
+        return Some(message_from_captures(&captures, string));
     } else {
         return None;
     }
@@ -461,8 +479,7 @@ fn is_trade_chat_line(string: &str, regex: &Regex) -> Option<Message> {
 
 fn is_global_chat_line(string: &str, regex: &Regex) -> Option<Message> {
     if let Some(captures) = regex.captures(string) {
-        let name = captures[1].to_string();
-        return Some(Message::new(string.to_string(), name));
+        return Some(message_from_captures(&captures, string));
     } else {
         return None;
     }
@@ -470,8 +487,7 @@ fn is_global_chat_line(string: &str, regex: &Regex) -> Option<Message> {
 
 fn is_tell_chat_line(string: &str, regex: &Regex) -> Option<Message> {
     if let Some(captures) = regex.captures(string) {
-        let name = captures[1].to_string();
-        return Some(Message::new(string.to_string(), name));
+        return Some(message_from_captures(&captures, string));
     } else {
         return None;
     }
@@ -526,6 +542,19 @@ mod tests {
         assert_eq!(parsed.chat_messages[0].sender, "Someone");
         assert_eq!(parsed.chat_messages[1].contents, double_name_string);
         assert_eq!(parsed.chat_messages[1].sender, "NPC Name");
+    }
+
+    #[test]
+    fn test_timestamp_parsing() {
+        let log = "[16:05:01] Someone says, \"we just got intercepted\"\"";
+        let reader = BufReader::new(log.as_bytes());
+        let mut parsed = ParsedStuff::new();
+
+        parse_chat_log(reader, "", &mut parsed);
+        let time = parsed.chat_messages[0].timestamp;
+        assert_eq!(time.hour(), 16);
+        assert_eq!(time.minute(), 05);
+        assert_eq!(time.second(), 01);
     }
 
     #[test]
