@@ -33,6 +33,7 @@ struct ParsedStuff {
     total_lines_read: usize,
     // NOTE: Saying this is optional for now. Haven't thought enough about it
     current_date: Option<Date>,
+    in_battle: bool,
 }
 
 impl ParsedStuff {
@@ -47,6 +48,7 @@ impl ParsedStuff {
             last_line_read: 0,
             total_lines_read: 0,
             current_date: None,
+            in_battle: false,
         };
     }
 }
@@ -333,7 +335,6 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
     // TODO: NOTE: We don't have to go through the entire file again, just what has changed?
     // TODO: Add some configurable limit of how many lines to look back on.
     let lines = buf_reader.lines();
-    let mut in_battle = false;
     let mut battle_count = 0;
 
     let timestamp_regex = r"\[(\d\d:\d\d:\d\d)\]".to_string();
@@ -398,7 +399,7 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
             // TODO: Would like ship/battle naming to be better, but it works
             let attacker_ship = splits[1].to_string() + " " + splits[2];
             let defender_ship = splits[5].to_string() + " " + splits[6];
-            in_battle = true;
+            parsed.in_battle = true;
             battle_count += 1;
             let battle = Battle {
                 id: battle_count,
@@ -410,7 +411,7 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
             continue;
         }
 
-        if in_battle && is_a_greedy_line(&line) {
+        if parsed.in_battle && is_a_greedy_line(&line) {
             let splits: Vec<&str> = line.split(" ").collect();
             let pirate_name = splits[1];
             let mut battle: &mut Battle = parsed.battles.front_mut().unwrap();
@@ -419,12 +420,12 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
             *greedies.entry(pirate_name.to_string()).or_default() += 1;
         }
 
-        if !in_battle && is_a_greedy_line(&line) {
+        if !parsed.in_battle && is_a_greedy_line(&line) {
             dbg!("Processing greedy line, but program believes we're outside of battle!");
         }
 
         if is_battle_ended_line(&line) {
-            in_battle = false;
+            parsed.in_battle = false;
         }
     }
 
@@ -677,6 +678,26 @@ mod tests {
         assert_eq!(parsed.last_line_read, 5);
         assert_eq!(parsed.total_lines_read, 5);
     }
+
+    #[test]
+    fn test_battle_in_progress_updated_on_reparse() {
+        let battle_started = "[02:01:19] Mean Shad has grappled Shifty Shiner. A melee breaks out between the crews!";
+        let first_greedy_hit = "[01:50:54] Bob delivers an overwhelming barrage against Petty Robert, causing some treasure to fall from their grip";
+        let mut log = format!("{}\n{}\n", battle_started, first_greedy_hit);
+
+        let reader = BufReader::new(log.as_bytes());
+        let mut parsed = ParsedStuff::new();
+        parse_chat_log(reader, "", &mut parsed);
+
+        assert_eq!(*parsed.battles[0].greedies.first_key_value().unwrap().1, 1);
+
+        let second_greedy_hit = "[01:50:54] Bob delivers an overwhelming barrage against Petty Robert, causing some treasure to fall from their grip";
+        log += second_greedy_hit;
+        let reader = BufReader::new(log.as_bytes());
+        parse_chat_log(reader, "", &mut parsed);
+        assert_eq!(*parsed.battles[0].greedies.first_key_value().unwrap().1, 2);
+    }
+
 
     // TODO: Some tests that check non matching lines too
     // TODO: Filter test as well
