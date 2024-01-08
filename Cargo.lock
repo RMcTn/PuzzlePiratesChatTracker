@@ -3,17 +3,6 @@
 version = 3
 
 [[package]]
-name = "PuzzlePiratesGreedyTracker"
-version = "0.1.0"
-dependencies = [
- "eframe",
- "egui",
- "regex",
- "rfd",
- "time",
-]
-
-[[package]]
 name = "ab_glyph"
 version = "0.2.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1981,6 +1970,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75cb1540fadbd5b8fbccc4dddad2734eba435053f725621c070711a14bb5f4b8"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "puzzle_pirates_greedy_tracker"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "regex",
+ "rfd",
+ "time",
 ]
 
 [[package]]

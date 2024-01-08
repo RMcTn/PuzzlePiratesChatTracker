@@ -1,5 +1,5 @@
 [package]
-name = "PuzzlePiratesGreedyTracker"
+name = "puzzle_pirates_greedy_tracker"
 version = "0.1.0"
 edition = "2021"
 

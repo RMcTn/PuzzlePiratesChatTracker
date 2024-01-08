@@ -2,20 +2,19 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use egui::{Color32, Context, FontId, TextFormat, Ui};
 use egui::text::LayoutJob;
+use egui::{Color32, Context, FontId, TextFormat, Ui};
 use regex::{Captures, Regex};
-use time::{Date, Time};
 use time::macros::format_description;
+use time::{Date, Time};
 
 #[derive(Debug)]
 struct Battle {
-    id: u32,
+    _id: u32,
     attacker_ship: String,
     defender_ship: String,
     greedies: BTreeMap<String, u32>,
@@ -74,12 +73,8 @@ impl Message {
 }
 
 fn main() {
-    // TODO: Do not commit this without removing the username
     // TODO: Track personal plunder from battles
     // TODO: Message monitor - look for messages in trade chat like 'message contains BUYING <some text> <item>, but only if the item is before a SELLING word in the same message etc)
-    // TODO: "global chats" tab
-    // TODO: "trade chats" tab
-    // TODO: "tells chat" tab
     // TODO: Warning if chat log is over a certain size?
     // TODO: Filters for the chat tab? Search by word, pirate name etc - Expand to allow for multiple word searches (allow regex?)
     // TODO: Configurable delay
@@ -92,13 +87,13 @@ fn main() {
     // TODO: Wrap message text (just overflows window at the moment)
     // TODO: Look into the invalid utf-8 errors we get from the chat log, might be useful encoded data?
 
-    let mut chat_log_path = Arc::new(Mutex::new(None));
+    let chat_log_path = Arc::new(Mutex::new(None));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default(),
         ..Default::default()
     };
 
-    let mut parsed_stuff = Arc::new(Mutex::new(ParsedStuff::new()));
+    let parsed_stuff = Arc::new(Mutex::new(ParsedStuff::new()));
 
     let config_path = Path::new("greedy-tracker.conf");
 
@@ -111,12 +106,15 @@ fn main() {
     let mut last_reparse = Instant::now();
     let timer_threshold = Duration::from_millis(2000);
 
-    let mut last_search_term = String::new();
-    let mut search_term = Arc::new(Mutex::new(String::new()));
+    let search_term = Arc::new(Mutex::new(String::new()));
 
     if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
         let reader = open_chat_log(path);
-        parse_chat_log(reader, &search_term.lock().unwrap(), &mut parsed_stuff.lock().unwrap());
+        parse_chat_log(
+            reader,
+            &search_term.lock().unwrap(),
+            &mut parsed_stuff.lock().unwrap(),
+        );
     }
 
     let eframe_ctx = Arc::new(Mutex::new(None::<Context>));
@@ -127,24 +125,26 @@ fn main() {
         let eframe_ctx = eframe_ctx.clone();
         let search_term = search_term.clone();
 
-        std::thread::spawn(move || {
-            loop {
-                let now = Instant::now();
-                let time_since_last_reparse = now - last_reparse;
-                if time_since_last_reparse > timer_threshold { // || search_term != last_search_term {
-                    dbg!("Reparsing");
-                    if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
-                        let reader = open_chat_log(path);
-                        parse_chat_log(reader, &search_term.lock().unwrap(), &mut parsed_stuff.lock().unwrap());
-                        match eframe_ctx.lock().unwrap().as_ref() {
-                            Some(ctx) => ctx.request_repaint(),
-                            None => (),
-                        }
-                        last_reparse = Instant::now();
+        std::thread::spawn(move || loop {
+            let now = Instant::now();
+            let time_since_last_reparse = now - last_reparse;
+            if time_since_last_reparse > timer_threshold {
+                dbg!("Reparsing");
+                if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
+                    let reader = open_chat_log(path);
+                    parse_chat_log(
+                        reader,
+                        &search_term.lock().unwrap(),
+                        &mut parsed_stuff.lock().unwrap(),
+                    );
+                    match eframe_ctx.lock().unwrap().as_ref() {
+                        Some(ctx) => ctx.request_repaint(),
+                        None => (),
                     }
+                    last_reparse = Instant::now();
                 }
-                std::thread::sleep(Duration::from_millis(500));
             }
+            std::thread::sleep(Duration::from_millis(500));
         });
     }
 
@@ -166,7 +166,10 @@ fn main() {
                     if let Ok(mut file) = File::create(config_path) {
                         file.write_all(path.to_string_lossy().as_bytes()).unwrap();
                     } else {
-                        eprintln!("Couldn't open config file at {}", config_path.to_string_lossy());
+                        eprintln!(
+                            "Couldn't open config file at {}",
+                            config_path.to_string_lossy()
+                        );
                     }
                 }
 
@@ -178,7 +181,11 @@ fn main() {
                     // Wipe our progress on reload
                     *parsed_stuff.lock().unwrap() = ParsedStuff::new();
                     //  TODO: Might want to send a message to the background thread instead of doing this parse here
-                    parse_chat_log(reader, &search_term.lock().unwrap(), &mut parsed_stuff.lock().unwrap());
+                    parse_chat_log(
+                        reader,
+                        &search_term.lock().unwrap(),
+                        &mut parsed_stuff.lock().unwrap(),
+                    );
                 }
             }
 
@@ -187,8 +194,16 @@ fn main() {
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut selected_panel, Tabs::GreedyHits, "Greedies");
                 ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Chat), "Chat");
-                ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Trade), "Trade chat");
-                ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Global), "Global chat");
+                ui.selectable_value(
+                    &mut selected_panel,
+                    Tabs::Chat(ChatType::Trade),
+                    "Trade chat",
+                );
+                ui.selectable_value(
+                    &mut selected_panel,
+                    Tabs::Chat(ChatType::Global),
+                    "Global chat",
+                );
                 ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Tell), "Tells");
                 ui.selectable_value(&mut selected_panel, Tabs::SearchTerm, "Search term");
             });
@@ -196,13 +211,18 @@ fn main() {
             match selected_panel {
                 Tabs::GreedyHits => greedy_ui(&mut ui, &parsed_stuff.lock().unwrap()),
                 Tabs::Chat(chat_type) => chat_ui(&mut ui, &parsed_stuff.lock().unwrap(), chat_type),
-                Tabs::SearchTerm => search_chat_ui(&mut ui, &parsed_stuff.lock().unwrap(), &mut search_term.lock().unwrap()),
+                Tabs::SearchTerm => search_chat_ui(
+                    &mut ui,
+                    &parsed_stuff.lock().unwrap(),
+                    &mut search_term.lock().unwrap(),
+                ),
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 }
 
-fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, mut search_term: &mut String) {
+fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, search_term: &mut String) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.heading("Filtered chat");
         let search_label = ui.label("Search term");
@@ -211,8 +231,14 @@ fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, mut search_term: &mut
 
         if parsed_stuff.messages_with_search_term.is_empty() {
             ui.label("No chat messages found.");
-        } else {}
-        for (i, message) in parsed_stuff.messages_with_search_term.iter().rev().enumerate() {
+        } else {
+        }
+        for (i, message) in parsed_stuff
+            .messages_with_search_term
+            .iter()
+            .rev()
+            .enumerate()
+        {
             let message_limit = 100;
             if i >= message_limit {
                 break;
@@ -231,21 +257,33 @@ fn colorize_message(message: &Message) -> LayoutJob {
 
     let sender_start = message.contents.find(&message.sender).unwrap();
     let sender_end = sender_start + message.sender.len();
-    job.append(&message.contents[0..sender_start], 0.0, TextFormat {
-        font_id: FontId::default(),
-        color: Color32::DARK_GRAY,
-        ..Default::default()
-    });
-    job.append(&message.contents[sender_start..sender_end], 0.0, TextFormat {
-        font_id: FontId::default(),
-        color: Color32::BLUE,
-        ..Default::default()
-    });
-    job.append(&message.contents[sender_end..message.contents.len()], 0.0, TextFormat {
-        font_id: FontId::default(),
-        color: Color32::DARK_GRAY,
-        ..Default::default()
-    });
+    job.append(
+        &message.contents[0..sender_start],
+        0.0,
+        TextFormat {
+            font_id: FontId::default(),
+            color: Color32::DARK_GRAY,
+            ..Default::default()
+        },
+    );
+    job.append(
+        &message.contents[sender_start..sender_end],
+        0.0,
+        TextFormat {
+            font_id: FontId::default(),
+            color: Color32::BLUE,
+            ..Default::default()
+        },
+    );
+    job.append(
+        &message.contents[sender_end..message.contents.len()],
+        0.0,
+        TextFormat {
+            font_id: FontId::default(),
+            color: Color32::DARK_GRAY,
+            ..Default::default()
+        },
+    );
     return job;
 }
 
@@ -290,7 +328,10 @@ fn greedy_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff) {
             ui.heading("Greedy hits");
             for battle in &parsed_stuff.battles {
                 ui.separator();
-                ui.heading(format!("Battle between {} and {}", battle.attacker_ship, battle.defender_ship));
+                ui.heading(format!(
+                    "Battle between {} and {}",
+                    battle.attacker_ship, battle.defender_ship
+                ));
                 let greedy_count: u32 = battle.greedies.values().sum();
                 let total_greedy_hits_str = format!("{} Greedies in total", greedy_count);
                 ui.label(&total_greedy_hits_str);
@@ -331,7 +372,11 @@ fn open_chat_log(path: &Path) -> BufReader<File> {
     return BufReader::new(file);
 }
 
-fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed: &mut ParsedStuff) {
+fn parse_chat_log<R: Read>(
+    buf_reader: BufReader<R>,
+    search_string: &str,
+    parsed: &mut ParsedStuff,
+) {
     // TODO: NOTE: We don't have to go through the entire file again, just what has changed?
     // TODO: Add some configurable limit of how many lines to look back on.
     let lines = buf_reader.lines();
@@ -347,7 +392,6 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
 
     let date_seperator_regex = Regex::new(r"={5} (\d\d\d\d/\d\d/\d\d) ={5}").unwrap();
     let date_format = format_description!("[year]/[month]/[day]");
-
 
     let starting_line = parsed.last_line_read;
     // FIXME(?): TODO: Assuming the chat log will never be pruned or truncated in some way whilst the parser is running. Otherwise our starting line could be beyond what the file's actual size is now. We could warn the user, if we kept track of how many lines we've seen in this parse attempt (couldn't just skip x lines any more, we'd need to iterate through everything and sum it up, but might not actually matter performance wise to count per line), and compare it to total_lines_read (if < warn user)
@@ -402,7 +446,7 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
             parsed.in_battle = true;
             battle_count += 1;
             let battle = Battle {
-                id: battle_count,
+                _id: battle_count,
                 greedies: BTreeMap::new(),
                 defender_ship,
                 attacker_ship,
@@ -414,8 +458,8 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
         if parsed.in_battle && is_a_greedy_line(&line) {
             let splits: Vec<&str> = line.split(" ").collect();
             let pirate_name = splits[1];
-            let mut battle: &mut Battle = parsed.battles.front_mut().unwrap();
-            let mut greedies = &mut battle.greedies;
+            let battle: &mut Battle = parsed.battles.front_mut().unwrap();
+            let greedies = &mut battle.greedies;
 
             *greedies.entry(pirate_name.to_string()).or_default() += 1;
         }
@@ -431,34 +475,50 @@ fn parse_chat_log<R: Read>(buf_reader: BufReader<R>, search_string: &str, parsed
 
     if !search_string.is_empty() {
         for msg in &parsed.chat_messages {
-            if msg.contents.to_lowercase().contains(&search_string.to_lowercase()) {
+            if msg
+                .contents
+                .to_lowercase()
+                .contains(&search_string.to_lowercase())
+            {
                 parsed.messages_with_search_term.push(msg.clone());
             }
         }
         for msg in &parsed.trade_chat_messages {
-            if msg.contents.to_lowercase().contains(&search_string.to_lowercase()) {
+            if msg
+                .contents
+                .to_lowercase()
+                .contains(&search_string.to_lowercase())
+            {
                 parsed.messages_with_search_term.push(msg.clone());
             }
         }
         for msg in &parsed.global_chat_messages {
-            if msg.contents.to_lowercase().contains(&search_string.to_lowercase()) {
+            if msg
+                .contents
+                .to_lowercase()
+                .contains(&search_string.to_lowercase())
+            {
                 parsed.messages_with_search_term.push(msg.clone());
             }
         }
         for msg in &parsed.tells {
-            if msg.contents.to_lowercase().contains(&search_string.to_lowercase()) {
+            if msg
+                .contents
+                .to_lowercase()
+                .contains(&search_string.to_lowercase())
+            {
                 parsed.messages_with_search_term.push(msg.clone());
             }
         }
     }
 }
 
-
 fn is_a_greedy_line(string: &str) -> bool {
-    return string.contains("delivers a") || string.contains("performs a") || string.contains("executes a")
+    return string.contains("delivers a")
+        || string.contains("performs a")
+        || string.contains("executes a")
         || string.contains("swings a");
 }
-
 
 fn is_battle_ended_line(string: &str) -> bool {
     return string.contains("Game Over");
@@ -479,7 +539,11 @@ fn get_time_from_timestamp(timestamp: &str) -> Time {
 fn message_from_captures(captures: &Captures, chat_message: &str) -> Message {
     let timestamp = captures[1].to_string();
     let name = captures[2].to_string();
-    return Message::new(chat_message.to_string(), name, get_time_from_timestamp(&timestamp));
+    return Message::new(
+        chat_message.to_string(),
+        name,
+        get_time_from_timestamp(&timestamp),
+    );
 }
 
 fn is_chat_line(string: &str, regex: &Regex) -> Option<Message> {
@@ -529,6 +593,7 @@ enum ChatType {
     Tell,
 }
 
+#[cfg(test)]
 mod tests {
     use std::io::BufReader;
 
@@ -536,7 +601,7 @@ mod tests {
 
     use crate::{is_a_greedy_line, is_battle_started_line, parse_chat_log, ParsedStuff};
 
-// TODO: Feels like we're testing the same thing over and over for each chat type, but they do have different regexes, so..?
+    // TODO: Feels like we're testing the same thing over and over for each chat type, but they do have different regexes, so..?
 
     #[test]
     fn test_greedy_line() {
@@ -610,8 +675,10 @@ mod tests {
 
     #[test]
     fn test_trade_chat_line() {
-        let single_name_string = "[16:05:04] Someone trade chats, \"? Buying weavery or plot on barb or arakoua\"";
-        let double_name_string = "[16:05:04] Big Barry trade chats, \"? Buying weavery or plot on barb or arakoua\"";
+        let single_name_string =
+            "[16:05:04] Someone trade chats, \"? Buying weavery or plot on barb or arakoua\"";
+        let double_name_string =
+            "[16:05:04] Big Barry trade chats, \"? Buying weavery or plot on barb or arakoua\"";
 
         let log = format!("{}\n{}", single_name_string, double_name_string);
         let reader = BufReader::new(log.as_bytes());
@@ -662,14 +729,16 @@ mod tests {
     #[test]
     fn test_lines_read_count() {
         let single_name_string = "[16:05:04] Someone tells ye, \"2 for spades\"";
-        let mut log = format!("{}\n{}\n{}\n{}", single_name_string, single_name_string, single_name_string, single_name_string);
+        let mut log = format!(
+            "{}\n{}\n{}\n{}",
+            single_name_string, single_name_string, single_name_string, single_name_string
+        );
         let reader = BufReader::new(log.as_bytes());
         let mut parsed = ParsedStuff::new();
         parse_chat_log(reader, "", &mut parsed);
 
         assert_eq!(parsed.last_line_read, 4);
         assert_eq!(parsed.total_lines_read, 4);
-
 
         log += "\n[16:05:04] Someone tells ye, \"2 for spades\"";
         let reader = BufReader::new(log.as_bytes());
@@ -697,7 +766,6 @@ mod tests {
         parse_chat_log(reader, "", &mut parsed);
         assert_eq!(*parsed.battles[0].greedies.first_key_value().unwrap().1, 2);
     }
-
 
     // TODO: Some tests that check non matching lines too
     // TODO: Filter test as well
