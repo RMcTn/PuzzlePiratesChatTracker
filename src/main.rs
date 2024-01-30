@@ -12,6 +12,8 @@ use regex::{Captures, Regex};
 use time::macros::format_description;
 use time::{Date, Time};
 
+const PIRATE_INFO_URL: &'static str = "https://emerald.puzzlepirates.com/yoweb/pirate.wm?target=";
+
 #[derive(Debug)]
 struct Battle {
     _id: u32,
@@ -69,6 +71,25 @@ impl Message {
             timestamp,
             date: None,
         };
+    }
+    fn sender_indexes(&self) -> (usize, usize) {
+        let sender_start = self.contents.find(&self.sender).unwrap();
+        let sender_end = sender_start + self.sender.len();
+        return (sender_start, sender_end);
+    }
+
+    fn timestamp_from_message(&self) -> &str {
+        return &self.contents[0..=self.contents.find("]").unwrap()];
+    }
+
+    fn contents_after_sender(&self) -> &str {
+        let sender_end_index = self.sender_indexes().1;
+        return &self.contents[sender_end_index..self.contents.len()];
+    }
+
+
+    fn contents_without_sender(&self) -> String {
+        return self.contents[self.sender_indexes().1..self.contents.len()].to_string();
     }
 }
 
@@ -245,45 +266,36 @@ fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, search_term: &mut Str
             }
 
             ui.separator();
-            let job = colorize_message(&message);
-            let text = ui.fonts(|f| f.layout_job(job));
-            ui.label(text);
+            if message.sender.split_whitespace().count() > 1 {
+                // Probably an NPC, won't have a pirate page to go to
+                append_npc_chat_line(message, ui);
+            } else {
+                append_player_chat_line(message, ui);
+            }
         }
     });
 }
 
 fn colorize_message(message: &Message) -> LayoutJob {
     let mut job = egui::text::LayoutJob::default();
-
-    let sender_start = message.contents.find(&message.sender).unwrap();
-    let sender_end = sender_start + message.sender.len();
-    job.append(
-        &message.contents[0..sender_start],
-        0.0,
-        TextFormat {
-            font_id: FontId::default(),
-            color: Color32::DARK_GRAY,
-            ..Default::default()
-        },
-    );
-    job.append(
-        &message.contents[sender_start..sender_end],
-        0.0,
-        TextFormat {
-            font_id: FontId::default(),
-            color: Color32::BLUE,
-            ..Default::default()
-        },
-    );
-    job.append(
-        &message.contents[sender_end..message.contents.len()],
-        0.0,
-        TextFormat {
-            font_id: FontId::default(),
-            color: Color32::DARK_GRAY,
-            ..Default::default()
-        },
-    );
+    let sender_indices = message.sender_indexes();
+    let sender_start = sender_indices.0;
+    let sender_end = sender_indices.1;
+    job.append(&message.contents[0..sender_start], 0.0, TextFormat {
+        font_id: FontId::default(),
+        color: Color32::DARK_GRAY,
+        ..Default::default()
+    });
+    job.append(&message.contents[sender_start..sender_end], 0.0, TextFormat {
+        font_id: FontId::default(),
+        color: Color32::BLUE,
+        ..Default::default()
+    });
+    job.append(&message.contents[sender_end..message.contents.len()], 0.0, TextFormat {
+        font_id: FontId::default(),
+        color: Color32::DARK_GRAY,
+        ..Default::default()
+    });
     return job;
 }
 
@@ -313,10 +325,29 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, chat_type: ChatType) {
             }
 
             ui.separator();
-            let job = colorize_message(&message);
-            let text = ui.fonts(|f| f.layout_job(job));
-            ui.label(text);
+            if message.sender.split_whitespace().count() > 1 {
+                // Probably an NPC, won't have a pirate page to go to
+                append_npc_chat_line(message, ui);
+            } else {
+                append_player_chat_line(message, ui);
+            }
         }
+    });
+}
+
+fn append_npc_chat_line(message: &Message, ui: &mut Ui) {
+    let job = colorize_message(&message);
+    let text = ui.fonts(|f| f.layout_job(job));
+    ui.label(text);
+}
+
+fn append_player_chat_line(message: &Message, ui: &mut Ui) {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.label(message.timestamp_from_message());
+        ui.label(" ");
+        ui.hyperlink_to(&message.sender, PIRATE_INFO_URL.to_owned() + &message.sender);
+        ui.label(message.contents_without_sender());
     });
 }
 
