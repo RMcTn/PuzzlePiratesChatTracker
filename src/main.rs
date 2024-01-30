@@ -72,6 +72,7 @@ impl Message {
             date: None,
         };
     }
+
     fn sender_indexes(&self) -> (usize, usize) {
         let sender_start = self.contents.find(&self.sender).unwrap();
         let sender_end = sender_start + self.sender.len();
@@ -87,10 +88,16 @@ impl Message {
         return &self.contents[sender_end_index..self.contents.len()];
     }
 
-
     fn contents_without_sender(&self) -> String {
         return self.contents[self.sender_indexes().1..self.contents.len()].to_string();
     }
+
+    /// Players can't have whitespace in their names, but NPCs can.
+    /// Not sure if there are NPCs with no whitespace in their names.
+    fn is_sender_npc(&self) -> bool {
+        return self.sender.split_whitespace().count() > 1;
+    }
+
 }
 
 fn main() {
@@ -266,7 +273,7 @@ fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, search_term: &mut Str
             }
 
             ui.separator();
-            if message.sender.split_whitespace().count() > 1 {
+            if message.is_sender_npc() {
                 // Probably an NPC, won't have a pirate page to go to
                 append_npc_chat_line(message, ui);
             } else {
@@ -325,7 +332,7 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, chat_type: ChatType) {
             }
 
             ui.separator();
-            if message.sender.split_whitespace().count() > 1 {
+            if message.is_sender_npc() {
                 // Probably an NPC, won't have a pirate page to go to
                 append_npc_chat_line(message, ui);
             } else {
