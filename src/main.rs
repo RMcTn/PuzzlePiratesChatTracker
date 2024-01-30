@@ -83,11 +83,6 @@ impl Message {
         return &self.contents[0..=self.contents.find("]").unwrap()];
     }
 
-    fn contents_after_sender(&self) -> &str {
-        let sender_end_index = self.sender_indexes().1;
-        return &self.contents[sender_end_index..self.contents.len()];
-    }
-
     fn contents_without_sender(&self) -> String {
         return self.contents[self.sender_indexes().1..self.contents.len()].to_string();
     }
@@ -349,12 +344,12 @@ fn append_npc_chat_line(message: &Message, ui: &mut Ui) {
 }
 
 fn append_player_chat_line(message: &Message, ui: &mut Ui) {
-    ui.horizontal(|ui| {
+    ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
         ui.label(message.timestamp_from_message());
         ui.label(" ");
         ui.hyperlink_to(&message.sender, PIRATE_INFO_URL.to_owned() + &message.sender);
-        ui.label(message.contents_without_sender());
+        ui.add(egui::Label::new(message.contents_without_sender()).wrap(true));
     });
 }
 
