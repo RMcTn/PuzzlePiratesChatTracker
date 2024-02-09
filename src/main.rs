@@ -6,11 +6,11 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use egui::text::LayoutJob;
 use egui::{Color32, Context, FontId, TextFormat, Ui};
+use egui::text::LayoutJob;
 use regex::{Captures, Regex};
-use time::macros::format_description;
 use time::{Date, Time};
+use time::macros::format_description;
 
 const PIRATE_INFO_URL: &'static str = "https://emerald.puzzlepirates.com/yoweb/pirate.wm?target=";
 
@@ -37,7 +37,7 @@ struct ParsedStuff {
     in_battle: bool,
 }
 
-impl ParsedStuff {
+impl<'a> ParsedStuff {
     fn new() -> Self {
         return ParsedStuff {
             battles: VecDeque::new(),
@@ -52,10 +52,29 @@ impl ParsedStuff {
             in_battle: false,
         };
     }
+
+    fn messages_in_order_of_creation(&self) -> Vec<&Message> {
+        let total_message_count = self.chat_messages.len() + self.global_chat_messages.len() + self.trade_chat_messages.len();
+        let mut messages = Vec::with_capacity(total_message_count);
+        for message in &self.chat_messages {
+            messages.push(message);
+        }
+        for message in &self.global_chat_messages {
+            messages.push(message);
+        }
+        for message in &self.trade_chat_messages {
+            messages.push(message);
+        }
+
+        messages.sort_by(|a, b| a.id.cmp(&b.id));
+
+        return messages;
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 struct Message {
+    id: u32,
     timestamp: Time,
     contents: String,
     sender: String,
@@ -64,8 +83,9 @@ struct Message {
 }
 
 impl Message {
-    fn new(contents: String, sender: String, timestamp: Time) -> Self {
+    fn new(contents: String, sender: String, timestamp: Time, id: u32) -> Self {
         return Message {
+            id,
             contents,
             sender,
             timestamp,
@@ -92,7 +112,6 @@ impl Message {
     fn is_sender_npc(&self) -> bool {
         return self.sender.split_whitespace().count() > 1;
     }
-
 }
 
 fn main() {
@@ -103,12 +122,13 @@ fn main() {
     // TODO: Configurable delay
     // TODO: Error on failed parse (wrong file given for example)
     // TODO: Unread indicator on chat tabs
-    // TODO: Combined chat tab?
     // TODO: Alert/Sound/Notification on chat containing search term
     // TODO: Text should be selectable in chat tabs at least
     // TODO: Force a reparse when search term updates (with debounce period?)
-    // TODO: Wrap message text (just overflows window at the moment)
     // TODO: Look into the invalid utf-8 errors we get from the chat log, might be useful encoded data?
+    // TODO: Have the different chat types differ in some way in all chat
+    // TODO: Show the date timestamp beside messages (toggleable) - It's handy when looking back at older messages
+
 
     let chat_log_path = Arc::new(Mutex::new(None));
     let options = eframe::NativeOptions {
@@ -216,6 +236,7 @@ fn main() {
 
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut selected_panel, Tabs::GreedyHits, "Greedies");
+                ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::All), "All chat");
                 ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Chat), "Chat");
                 ui.selectable_value(
                     &mut selected_panel,
@@ -242,7 +263,7 @@ fn main() {
             }
         });
     })
-    .unwrap();
+        .unwrap();
 }
 
 fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, search_term: &mut String) {
@@ -254,8 +275,7 @@ fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, search_term: &mut Str
 
         if parsed_stuff.messages_with_search_term.is_empty() {
             ui.label("No chat messages found.");
-        } else {
-        }
+        } else {}
         for (i, message) in parsed_stuff
             .messages_with_search_term
             .iter()
@@ -308,14 +328,36 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, chat_type: ChatType) {
             ChatType::Trade => "Trade chat",
             ChatType::Global => "Global chat",
             ChatType::Tell => "Tells",
+            ChatType::All => "All chat",
         };
         ui.heading(heading);
+
+        if chat_type == ChatType::All {
+            for (i, message) in parsed_stuff.messages_in_order_of_creation().iter().rev().enumerate() {
+                let message_limit = 100;
+                if i >= message_limit {
+                    break;
+                }
+
+                ui.separator();
+                if message.is_sender_npc() {
+                    // Probably an NPC, won't have a pirate page to go to
+                    append_npc_chat_line(message, ui);
+                } else {
+                    append_player_chat_line(message, ui);
+                }
+            }
+            return;
+        }
+
         let messages = match chat_type {
             ChatType::Chat => &parsed_stuff.chat_messages,
             ChatType::Trade => &parsed_stuff.trade_chat_messages,
             ChatType::Global => &parsed_stuff.global_chat_messages,
             ChatType::Tell => &parsed_stuff.tells,
+            ChatType::All => panic!("Shouldn't have reached here"),
         };
+
         if messages.is_empty() {
             ui.label("No chat messages found.");
         }
@@ -338,6 +380,7 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedStuff, chat_type: ChatType) {
 }
 
 fn append_npc_chat_line(message: &Message, ui: &mut Ui) {
+    // TODO: FIXME: BUG: The NPC chat line style doesn't match the player chat line style
     let job = colorize_message(&message);
     let text = ui.fonts(|f| f.layout_job(job));
     ui.label(text);
@@ -429,10 +472,13 @@ fn parse_chat_log<R: Read>(
     let starting_line = parsed.last_line_read;
     // FIXME(?): TODO: Assuming the chat log will never be pruned or truncated in some way whilst the parser is running. Otherwise our starting line could be beyond what the file's actual size is now. We could warn the user, if we kept track of how many lines we've seen in this parse attempt (couldn't just skip x lines any more, we'd need to iterate through everything and sum it up, but might not actually matter performance wise to count per line), and compare it to total_lines_read (if < warn user)
 
+
     for line in lines.skip(starting_line) {
         parsed.last_line_read += 1;
         parsed.total_lines_read += 1;
 
+        // TODO: FIXME: BUG: Message id will increase if a message is multi line (I think), but it still increments so for ordering it works.
+        let message_id = parsed.total_lines_read as u32;
         if line.is_err() {
             // TODO: Investigate what invalid utf8 we'd actually get
             continue;
@@ -447,25 +493,25 @@ fn parse_chat_log<R: Read>(
 
         // TODO: FIXME: It may be possible for a chat message to span multiple lines
         //      a chat from a player will end in a ", even if it's over multiple lines
-        if let Some(mut message) = is_chat_line(&line, &chat_line_regex) {
+        if let Some(mut message) = is_chat_line(&line, &chat_line_regex, message_id) {
             message.date = parsed.current_date;
             parsed.chat_messages.push(message);
             continue;
         }
 
-        if let Some(mut message) = is_trade_chat_line(&line, &trade_chat_line_regex) {
+        if let Some(mut message) = is_trade_chat_line(&line, &trade_chat_line_regex, message_id) {
             message.date = parsed.current_date;
             parsed.trade_chat_messages.push(message);
             continue;
         }
 
-        if let Some(mut message) = is_global_chat_line(&line, &global_chat_line_regex) {
+        if let Some(mut message) = is_global_chat_line(&line, &global_chat_line_regex, message_id) {
             message.date = parsed.current_date;
             parsed.global_chat_messages.push(message);
             continue;
         }
 
-        if let Some(mut message) = is_tell_chat_line(&line, &tell_chat_line_regex) {
+        if let Some(mut message) = is_tell_chat_line(&line, &tell_chat_line_regex, message_id) {
             message.date = parsed.current_date;
             parsed.tells.push(message);
             continue;
@@ -506,6 +552,7 @@ fn parse_chat_log<R: Read>(
         }
     }
 
+    // TODO: FIXME: Don't just clone these messages (Or at least change their ID)
     if !search_string.is_empty() {
         for msg in &parsed.chat_messages {
             if msg
@@ -569,43 +616,44 @@ fn get_time_from_timestamp(timestamp: &str) -> Time {
     return timestamp;
 }
 
-fn message_from_captures(captures: &Captures, chat_message: &str) -> Message {
+fn message_from_captures(captures: &Captures, chat_message: &str, message_id: u32) -> Message {
     let timestamp = captures[1].to_string();
     let name = captures[2].to_string();
     return Message::new(
         chat_message.to_string(),
         name,
         get_time_from_timestamp(&timestamp),
+        message_id,
     );
 }
 
-fn is_chat_line(string: &str, regex: &Regex) -> Option<Message> {
+fn is_chat_line(string: &str, regex: &Regex, message_id: u32) -> Option<Message> {
     if let Some(captures) = regex.captures(string) {
-        return Some(message_from_captures(&captures, string));
+        return Some(message_from_captures(&captures, string, message_id));
     } else {
         return None;
     }
 }
 
-fn is_trade_chat_line(string: &str, regex: &Regex) -> Option<Message> {
+fn is_trade_chat_line(string: &str, regex: &Regex, message_id: u32) -> Option<Message> {
     if let Some(captures) = regex.captures(string) {
-        return Some(message_from_captures(&captures, string));
+        return Some(message_from_captures(&captures, string, message_id));
     } else {
         return None;
     }
 }
 
-fn is_global_chat_line(string: &str, regex: &Regex) -> Option<Message> {
+fn is_global_chat_line(string: &str, regex: &Regex, message_id: u32) -> Option<Message> {
     if let Some(captures) = regex.captures(string) {
-        return Some(message_from_captures(&captures, string));
+        return Some(message_from_captures(&captures, string, message_id));
     } else {
         return None;
     }
 }
 
-fn is_tell_chat_line(string: &str, regex: &Regex) -> Option<Message> {
+fn is_tell_chat_line(string: &str, regex: &Regex, message_id: u32) -> Option<Message> {
     if let Some(captures) = regex.captures(string) {
-        return Some(message_from_captures(&captures, string));
+        return Some(message_from_captures(&captures, string, message_id));
     } else {
         return None;
     }
@@ -624,6 +672,7 @@ enum ChatType {
     Trade,
     Global,
     Tell,
+    All,
 }
 
 #[cfg(test)]
@@ -634,7 +683,7 @@ mod tests {
 
     use crate::{is_a_greedy_line, is_battle_started_line, parse_chat_log, ParsedStuff};
 
-    // TODO: Feels like we're testing the same thing over and over for each chat type, but they do have different regexes, so..?
+// TODO: Feels like we're testing the same thing over and over for each chat type, but they do have different regexes, so..?
 
     #[test]
     fn test_greedy_line() {
