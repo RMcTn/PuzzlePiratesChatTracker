@@ -461,7 +461,7 @@ fn parse_chat_log<R: Read>(
     let timestamp_regex = r"\[(\d\d:\d\d:\d\d)\]".to_string();
     let sender_section_for_regex = r" (\w+( |-*)?\w+)".to_string();
     let regex_bits = timestamp_regex + &sender_section_for_regex;
-    let chat_line_regex = Regex::new(&(regex_bits.clone() + " says,")).unwrap();
+    let chat_line_regex = Regex::new(&(regex_bits.clone() + " (says|shouts),")).unwrap();
     let trade_chat_line_regex = Regex::new(&(regex_bits.clone() + " trade chats,")).unwrap();
     let global_chat_line_regex = Regex::new(&(regex_bits.clone() + " global chats,")).unwrap();
     let tell_chat_line_regex = Regex::new(&(regex_bits.clone() + " tells ye,")).unwrap();
@@ -701,17 +701,20 @@ mod tests {
     fn test_regular_chat_line() {
         let single_name_string = "[16:05:01] Someone says, \"we just got intercepted\"\"";
         let double_name_string = "[16:05:01] NPC Name says, \"we just got intercepted\"";
+        let shout_string = "[16:05:01] Someone shouts, Yeehaw!";
 
-        let log = format!("{}\n{}", single_name_string, double_name_string);
+        let log = format!("{}\n{}\n{}", single_name_string, double_name_string, shout_string);
 
         let reader = BufReader::new(log.as_bytes());
         let mut parsed = ParsedStuff::new();
         parse_chat_log(reader, "", &mut parsed);
-        assert_eq!(parsed.chat_messages.len(), 2);
+        assert_eq!(parsed.chat_messages.len(), 3);
         assert_eq!(parsed.chat_messages[0].contents, single_name_string);
         assert_eq!(parsed.chat_messages[0].sender, "Someone");
         assert_eq!(parsed.chat_messages[1].contents, double_name_string);
         assert_eq!(parsed.chat_messages[1].sender, "NPC Name");
+        assert_eq!(parsed.chat_messages[1].contents, double_name_string);
+        assert_eq!(parsed.chat_messages[2].sender, "Someone");
     }
 
     #[test]
