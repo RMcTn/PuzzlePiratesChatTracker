@@ -9,8 +9,6 @@ use std::time::{Duration, Instant};
 use chat_log::ParsedChatLog;
 use egui::text::LayoutJob;
 use egui::{Color32, Context, FontId, TextFormat, Ui};
-use regex::{Captures, Regex};
-use time::macros::format_description;
 use time::{Date, Time};
 
 const PIRATE_INFO_URL: &str = "https://emerald.puzzlepirates.com/yoweb/pirate.wm?target=";
@@ -152,7 +150,6 @@ fn main() {
         egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("Open chat log").clicked() {
                 if let Some(path) = rfd::FileDialog::new().pick_file() {
-                    // Wipe our progress on reload
                     *chat_log_path.lock().unwrap() = Some(path.clone());
 
                     if let Ok(mut file) = File::create(config_path) {
@@ -163,6 +160,11 @@ fn main() {
                             config_path.to_string_lossy()
                         );
                     }
+
+                    let mut parsed = parsed_stuff.lock().unwrap();
+                    *parsed = ParsedChatLog::new();
+                    let reader = open_chat_log(&path);
+                    parsed.parse_chat_log(reader, &search_term.lock().unwrap());
                 }
 
                 // TODO: Drag and drop file
