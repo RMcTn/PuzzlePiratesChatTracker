@@ -45,6 +45,7 @@ impl Message {
     }
 
     fn sender_indexes(&self) -> (usize, usize) {
+        // This felt like a bad idea, TBC
         let sender_start = self.contents.find(&self.sender).unwrap();
         let sender_end = sender_start + self.sender.len();
         return (sender_start, sender_end);
@@ -79,6 +80,8 @@ fn main() {
     // TODO: Look into the invalid utf-8 errors we get from the chat log, might be useful encoded data?
     // TODO: Have the different chat types differ in some way in all chat
     // TODO: Show the date timestamp beside messages (toggleable) - It's handy when looking back at older messages
+    // TODO: User settings tab
+    // TODO: User settings, let user pick colour for each chat
 
     let chat_log_path = Arc::new(Mutex::new(None));
     let options = eframe::NativeOptions {
