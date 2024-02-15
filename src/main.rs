@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use chat_log::ParsedChatLog;
+use eframe::egui::ViewportBuilder;
 use egui::text::LayoutJob;
 use egui::{Color32, Context, FontId, TextFormat, Ui};
 use time::{Date, Time};
@@ -75,7 +76,6 @@ fn main() {
     // TODO: Error on failed parse (wrong file given for example)
     // TODO: Unread indicator on chat tabs
     // TODO: Alert/Sound/Notification on chat containing search term
-    // TODO: Text should be selectable in chat tabs at least
     // TODO: Force a reparse when search term updates (with debounce period?)
     // TODO: Look into the invalid utf-8 errors we get from the chat log, might be useful encoded data?
     // TODO: Have the different chat types differ in some way in all chat
@@ -84,10 +84,6 @@ fn main() {
     // TODO: User settings, let user pick colour for each chat
 
     let chat_log_path = Arc::new(Mutex::new(None));
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default(),
-        ..Default::default()
-    };
 
     let parsed_stuff = Arc::new(Mutex::new(ParsedChatLog::new()));
 
@@ -143,6 +139,10 @@ fn main() {
 
     let chat_log_path = chat_log_path.clone();
     let parsed_stuff = parsed_stuff.clone();
+    let options = eframe::NativeOptions {
+        viewport: ViewportBuilder::default(),
+        ..Default::default()
+    };
     let mut ctx_been_cloned = false;
     eframe::run_simple_native("Greedy tracker", options, move |ctx, _frame| {
         if !ctx_been_cloned {
