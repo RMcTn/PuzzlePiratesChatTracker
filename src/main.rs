@@ -222,15 +222,11 @@ fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, search_term: &mut S
         ui.text_edit_singleline(search_term)
             .labelled_by(search_label.id);
 
-        if parsed_stuff.messages_with_search_term.is_empty() {
+        let matching_messages = parsed_stuff.messages_containing_search_term(search_term);
+        if matching_messages.is_empty() {
             ui.label("No chat messages found.");
         }
-        for (i, message) in parsed_stuff
-            .messages_with_search_term
-            .iter()
-            .rev()
-            .enumerate()
-        {
+        for (i, message) in matching_messages.iter().rev().enumerate() {
             let message_limit = 100;
             if i >= message_limit {
                 break;

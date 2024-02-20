@@ -17,7 +17,6 @@ pub struct ParsedChatLog {
     pub tells: Vec<Message>,
     pub trade_chat_messages: Vec<Message>,
     pub global_chat_messages: Vec<Message>,
-    pub messages_with_search_term: Vec<Message>,
     pub last_line_read: usize,
     pub total_lines_read: usize,
     // NOTE: Saying this is optional for now. Haven't thought enough about it
@@ -33,7 +32,6 @@ impl ParsedChatLog {
             tells: vec![],
             trade_chat_messages: vec![],
             global_chat_messages: vec![],
-            messages_with_search_term: vec![],
             last_line_read: 0,
             total_lines_read: 0,
             current_date: None,
@@ -62,6 +60,57 @@ impl ParsedChatLog {
 
         messages.sort_by(|a, b| a.id.cmp(&b.id));
 
+        return messages;
+    }
+
+    pub fn messages_containing_search_term(&self, search_string: &str) -> Vec<&Message> {
+        // SPEEDUP: Cache the matching messages result so this doesn't trigger every time the UI
+        // updates in the search term tab
+        let total_message_count = self.chat_messages.len()
+            + self.global_chat_messages.len()
+            + self.trade_chat_messages.len()
+            + self.tells.len();
+        let mut messages = Vec::with_capacity(total_message_count);
+        if !search_string.is_empty() {
+            for msg in &self.chat_messages {
+                if msg
+                    .contents
+                    .to_lowercase()
+                    .contains(&search_string.to_lowercase())
+                {
+                    messages.push(msg);
+                }
+            }
+            for msg in &self.trade_chat_messages {
+                if msg
+                    .contents
+                    .to_lowercase()
+                    .contains(&search_string.to_lowercase())
+                {
+                    messages.push(msg);
+                }
+            }
+            for msg in &self.global_chat_messages {
+                if msg
+                    .contents
+                    .to_lowercase()
+                    .contains(&search_string.to_lowercase())
+                {
+                    messages.push(msg);
+                }
+            }
+            for msg in &self.tells {
+                if msg
+                    .contents
+                    .to_lowercase()
+                    .contains(&search_string.to_lowercase())
+                {
+                    messages.push(msg);
+                }
+            }
+        }
+
+        messages.sort_by(|a, b| a.id.cmp(&b.id));
         return messages;
     }
 
@@ -168,44 +217,6 @@ impl ParsedChatLog {
         }
 
         // TODO: FIXME: Don't just clone these messages (Or at least change their ID)
-        if !search_string.is_empty() {
-            for msg in &self.chat_messages {
-                if msg
-                    .contents
-                    .to_lowercase()
-                    .contains(&search_string.to_lowercase())
-                {
-                    self.messages_with_search_term.push(msg.clone());
-                }
-            }
-            for msg in &self.trade_chat_messages {
-                if msg
-                    .contents
-                    .to_lowercase()
-                    .contains(&search_string.to_lowercase())
-                {
-                    self.messages_with_search_term.push(msg.clone());
-                }
-            }
-            for msg in &self.global_chat_messages {
-                if msg
-                    .contents
-                    .to_lowercase()
-                    .contains(&search_string.to_lowercase())
-                {
-                    self.messages_with_search_term.push(msg.clone());
-                }
-            }
-            for msg in &self.tells {
-                if msg
-                    .contents
-                    .to_lowercase()
-                    .contains(&search_string.to_lowercase())
-                {
-                    self.messages_with_search_term.push(msg.clone());
-                }
-            }
-        }
     }
 }
 
