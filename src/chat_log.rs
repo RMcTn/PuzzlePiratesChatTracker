@@ -9,6 +9,8 @@ use time::{macros::format_description, Date, Time};
 use crate::{Battle, Message};
 
 #[derive(Debug)]
+// TODO: Feels a bit weird that we can create a 'parsed chat log' without actually parsing
+// anything. Probably naming issue of parser vs parsed
 pub struct ParsedChatLog {
     pub battles: VecDeque<Battle>,
     pub chat_messages: Vec<Message>,
@@ -42,7 +44,8 @@ impl ParsedChatLog {
     pub fn messages_in_order_of_creation(&self) -> Vec<&Message> {
         let total_message_count = self.chat_messages.len()
             + self.global_chat_messages.len()
-            + self.trade_chat_messages.len();
+            + self.trade_chat_messages.len()
+            + self.tells.len();
         let mut messages = Vec::with_capacity(total_message_count);
         for message in &self.chat_messages {
             messages.push(message);
@@ -51,6 +54,9 @@ impl ParsedChatLog {
             messages.push(message);
         }
         for message in &self.trade_chat_messages {
+            messages.push(message);
+        }
+        for message in &self.tells {
             messages.push(message);
         }
 
@@ -275,7 +281,10 @@ mod tests {
 
     use time::Month;
 
-    use crate::chat_log::{is_a_greedy_line, is_battle_started_line, ParsedChatLog};
+    use crate::{
+        chat_log::{is_a_greedy_line, is_battle_started_line, ParsedChatLog},
+        Message,
+    };
 
     // TODO: Feels like we're testing the same thing over and over for each chat type, but they do have different regexes, so..?
 
@@ -447,6 +456,38 @@ mod tests {
         let reader = BufReader::new(log.as_bytes());
         parsed.parse_chat_log(reader, "");
         assert_eq!(*parsed.battles[0].greedies.first_key_value().unwrap().1, 2);
+    }
+
+    #[test]
+    fn test_messages_in_order_of_creation() {
+        let global_chat = "[16:05:04] Someone global chats, \"2 for spades\"";
+        let other_global_chat = "[16:05:05] Someone global chats, \"5 for shovels\"";
+        let trade_chat =
+            "[16:05:04] Someone trade chats, \"? Buying weavery or plot on barb or arakoua\"";
+        let regular_chat = "[16:05:01] Someone says, \"we just got intercepted\"\"";
+        let tell = "[16:05:04] Someone tells ye, \"2 for spades\"";
+        let log = format!(
+            "{}\n{}\n{}\n{}\n{}\n",
+            global_chat, trade_chat, regular_chat, other_global_chat, tell
+        );
+        let reader = BufReader::new(log.as_bytes());
+        let mut parsed = ParsedChatLog::new();
+        parsed.parse_chat_log(reader, "");
+        let messages = parsed.messages_in_order_of_creation();
+
+        let expected_order = [
+            global_chat,
+            trade_chat,
+            regular_chat,
+            other_global_chat,
+            tell,
+        ];
+
+        assert_eq!(messages.len(), expected_order.len());
+
+        for (message, expected) in messages.iter().zip(expected_order) {
+            assert_eq!(message.contents, expected);
+        }
     }
 
     // TODO: Some tests that check non matching lines too
