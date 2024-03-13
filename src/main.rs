@@ -87,7 +87,7 @@ fn main() {
 
     let parsed_stuff = Arc::new(Mutex::new(ParsedChatLog::new()));
 
-    let config_path = Path::new("greedy-tracker.conf");
+    let config_path = Path::new("puzzle-pirates-chat-tracker.conf");
 
     if let Ok(contents) = fs::read_to_string(config_path) {
         // TODO: FIXME: Don't assume only the path is there for
@@ -102,10 +102,7 @@ fn main() {
 
     if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
         let reader = open_chat_log(path);
-        parsed_stuff
-            .lock()
-            .unwrap()
-            .parse_chat_log(reader);
+        parsed_stuff.lock().unwrap().parse_chat_log(reader);
     }
 
     let eframe_ctx = Arc::new(Mutex::new(None::<Context>));
@@ -122,10 +119,7 @@ fn main() {
                 dbg!("Reparsing");
                 if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
                     let reader = open_chat_log(path);
-                    parsed_stuff
-                        .lock()
-                        .unwrap()
-                        .parse_chat_log(reader);
+                    parsed_stuff.lock().unwrap().parse_chat_log(reader);
                     if let Some(ctx) = eframe_ctx.lock().unwrap().as_ref() {
                         ctx.request_repaint();
                     }
