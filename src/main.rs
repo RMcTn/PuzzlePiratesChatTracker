@@ -90,7 +90,7 @@ fn main() {
 
     let parsed_stuff = Arc::new(Mutex::new(ParsedChatLog::new()));
 
-    let config_path = Path::new("puzzle-pirates-chat-tracker.conf");
+    let config_path = Path::new("puzzle-pirates-chat-tracker.toml");
 
     let config = Arc::new(Mutex::new(None));
     if let Ok(contents) = fs::read_to_string(config_path) {
