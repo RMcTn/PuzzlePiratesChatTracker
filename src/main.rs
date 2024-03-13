@@ -8,7 +8,6 @@ use std::time::{Duration, Instant};
 
 use chat_log::ParsedChatLog;
 use eframe::egui::ViewportBuilder;
-use egui::mutex::RwLock;
 use egui::{Context, Ui};
 use serde::{Deserialize, Serialize};
 use time::{Date, Time};
@@ -24,7 +23,7 @@ struct Config {
     message_limit: MessageLimit,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 struct MessageLimit(u64);
 
 impl Default for MessageLimit {
@@ -172,6 +171,8 @@ fn main() {
                 ctx_been_cloned = true;
             }
 
+            let original_message_limit = config.lock().unwrap().message_limit;
+
             egui::CentralPanel::default().show(ctx, |ui| {
                 if ui.button("Open chat log").clicked() {
                     if let Some(path) = rfd::FileDialog::new().pick_file() {
@@ -181,10 +182,7 @@ fn main() {
                             config.clone()
                         };
 
-                        if let Ok(mut file) = File::create(config_path) {
-                            let toml = toml::to_string(&config).unwrap();
-                            file.write_all(&toml.as_bytes()).unwrap();
-                        } else {
+                        if let Err(_) = write_config_to_config_file(&config, config_path) {
                             eprintln!(
                                 "Couldn't open config file at {}",
                                 config_path.to_string_lossy()
@@ -246,6 +244,18 @@ fn main() {
                     Tabs::Settings => settings_ui(ui, &mut config.lock().unwrap().message_limit.0),
                 }
             });
+
+            {
+                let config = config.lock().unwrap();
+                if config.message_limit != original_message_limit {
+                    if let Err(_) = write_config_to_config_file(&config, config_path) {
+                        eprintln!(
+                            "Couldn't open config file at {}",
+                            config_path.to_string_lossy()
+                        );
+                    }
+                }
+            }
         },
     )
     .unwrap();
@@ -445,4 +455,11 @@ enum ChatType {
     Global,
     Tell,
     All,
+}
+
+fn write_config_to_config_file(config: &Config, config_path: &Path) -> Result<(), std::io::Error> {
+    let mut file = File::create(config_path)?;
+    let toml = toml::to_string(&config).unwrap();
+    file.write_all(&toml.as_bytes()).unwrap();
+    Ok(())
 }
