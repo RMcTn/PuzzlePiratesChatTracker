@@ -246,7 +246,7 @@ fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, search_term: &mut S
             ui.label("No chat messages found.");
         }
         for (i, message) in matching_messages.iter().rev().enumerate() {
-            let message_limit = 100;
+            let message_limit = 1000;
             if i >= message_limit {
                 break;
             }
@@ -280,7 +280,7 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, chat_type: ChatType) {
                 .rev()
                 .enumerate()
             {
-                let message_limit = 100;
+                let message_limit = 1000;
                 if i >= message_limit {
                     break;
                 }
@@ -309,7 +309,7 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, chat_type: ChatType) {
         }
 
         for (i, message) in messages.iter().rev().enumerate() {
-            let message_limit = 100;
+            let message_limit = 1000;
             if i >= message_limit {
                 break;
             }
