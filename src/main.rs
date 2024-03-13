@@ -341,10 +341,14 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, chat_type: ChatType) {
 }
 
 fn append_npc_chat_line(message: &Message, ui: &mut Ui) {
-    // TODO: FIXME: BUG: The NPC chat line style doesn't match the player chat line style
-    let job = colorize_message(message);
-    let text = ui.fonts(|f| f.layout_job(job));
-    ui.label(text);
+    let npc_name_color = egui::Color32::from_hex("#FF4500").unwrap();
+    ui.horizontal_top(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.label(message.timestamp_from_message());
+        ui.label(" ");
+        ui.label(egui::RichText::new(&message.sender).color(npc_name_color));
+        ui.add(egui::Label::new(message.contents_without_sender()).wrap(true));
+    });
 }
 
 fn append_player_chat_line(message: &Message, ui: &mut Ui) {
