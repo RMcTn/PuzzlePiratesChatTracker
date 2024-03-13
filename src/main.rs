@@ -2,19 +2,24 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::fs::File;
 use std::io::{BufReader, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use chat_log::ParsedChatLog;
 use eframe::egui::ViewportBuilder;
-use egui::text::LayoutJob;
-use egui::{Color32, Context, FontId, TextFormat, Ui};
+use egui::{Context, Ui};
+use serde::{Deserialize, Serialize};
 use time::{Date, Time};
 
 const PIRATE_INFO_URL: &str = "https://emerald.puzzlepirates.com/yoweb/pirate.wm?target=";
 
 mod chat_log;
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+struct Config {
+    chat_log_path: PathBuf,
+}
 
 #[derive(Debug)]
 struct Battle {
@@ -83,15 +88,14 @@ fn main() {
     // TODO: User settings tab
     // TODO: User settings, let user pick colour for each chat
 
-    let chat_log_path = Arc::new(Mutex::new(None));
-
     let parsed_stuff = Arc::new(Mutex::new(ParsedChatLog::new()));
 
     let config_path = Path::new("puzzle-pirates-chat-tracker.conf");
 
+    let config = Arc::new(Mutex::new(None));
     if let Ok(contents) = fs::read_to_string(config_path) {
-        // TODO: FIXME: Don't assume only the path is there for
-        *chat_log_path.lock().unwrap() = Some(Path::new(&contents).to_path_buf());
+        let parsed_config: Config = toml::from_str(&contents).unwrap();
+        *config.lock().unwrap() = Some(parsed_config);
     };
 
     let mut selected_panel = Tabs::Chat(ChatType::All);
@@ -100,15 +104,15 @@ fn main() {
 
     let search_term = Arc::new(Mutex::new(String::new()));
 
-    if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
-        let reader = open_chat_log(path);
+    if let Some(config) = config.lock().unwrap().as_ref() {
+        let reader = open_chat_log(&config.chat_log_path);
         parsed_stuff.lock().unwrap().parse_chat_log(reader);
     }
 
     let eframe_ctx = Arc::new(Mutex::new(None::<Context>));
 
     {
-        let chat_log_path = chat_log_path.clone();
+        let config = config.clone();
         let parsed_stuff = parsed_stuff.clone();
         let eframe_ctx = eframe_ctx.clone();
 
@@ -117,8 +121,8 @@ fn main() {
             let time_since_last_reparse = now - last_reparse;
             if time_since_last_reparse > timer_threshold {
                 dbg!("Reparsing");
-                if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
-                    let reader = open_chat_log(path);
+                if let Some(config) = config.lock().unwrap().as_ref() {
+                    let reader = open_chat_log(&config.chat_log_path);
                     parsed_stuff.lock().unwrap().parse_chat_log(reader);
                     if let Some(ctx) = eframe_ctx.lock().unwrap().as_ref() {
                         ctx.request_repaint();
@@ -130,7 +134,7 @@ fn main() {
         });
     }
 
-    let chat_log_path = chat_log_path.clone();
+    let config = config.clone();
     let parsed_stuff = parsed_stuff.clone();
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default(),
@@ -149,10 +153,27 @@ fn main() {
             egui::CentralPanel::default().show(ctx, |ui| {
                 if ui.button("Open chat log").clicked() {
                     if let Some(path) = rfd::FileDialog::new().pick_file() {
-                        *chat_log_path.lock().unwrap() = Some(path.clone());
+                        let config = {
+                            let mut lock = config.lock().unwrap();
+                            let config = lock.as_mut();
+                            match config {
+                                Some(config) => {
+                                    config.chat_log_path = path;
+                                    config.clone()
+                                }
+                                None => {
+                                    let config = Config {
+                                        chat_log_path: path,
+                                    };
+                                    *lock = Some(config.clone());
+                                    config
+                                }
+                            }
+                        };
 
                         if let Ok(mut file) = File::create(config_path) {
-                            file.write_all(path.to_string_lossy().as_bytes()).unwrap();
+                            let toml = toml::to_string(&config).unwrap();
+                            file.write_all(&toml.as_bytes()).unwrap();
                         } else {
                             eprintln!(
                                 "Couldn't open config file at {}",
@@ -162,15 +183,15 @@ fn main() {
 
                         let mut parsed = parsed_stuff.lock().unwrap();
                         *parsed = ParsedChatLog::new();
-                        let reader = open_chat_log(&path);
+                        let reader = open_chat_log(&config.chat_log_path);
                         parsed.parse_chat_log(reader);
                     }
 
                     // TODO: Drag and drop file
                 }
                 if ui.button("Reload chat log").clicked() {
-                    if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
-                        let reader = open_chat_log(path);
+                    if let Some(config) = config.lock().unwrap().as_ref() {
+                        let reader = open_chat_log(&config.chat_log_path);
                         // Wipe our progress on reload
                         let mut parsed = parsed_stuff.lock().unwrap();
                         *parsed = ParsedChatLog::new();
@@ -238,41 +259,6 @@ fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, search_term: &mut S
             }
         }
     });
-}
-
-fn colorize_message(message: &Message) -> LayoutJob {
-    let mut job = egui::text::LayoutJob::default();
-    let sender_indices = message.sender_indexes();
-    let sender_start = sender_indices.0;
-    let sender_end = sender_indices.1;
-    job.append(
-        &message.contents[0..sender_start],
-        0.0,
-        TextFormat {
-            font_id: FontId::default(),
-            color: Color32::DARK_GRAY,
-            ..Default::default()
-        },
-    );
-    job.append(
-        &message.contents[sender_start..sender_end],
-        0.0,
-        TextFormat {
-            font_id: FontId::default(),
-            color: Color32::BLUE,
-            ..Default::default()
-        },
-    );
-    job.append(
-        &message.contents[sender_end..message.contents.len()],
-        0.0,
-        TextFormat {
-            font_id: FontId::default(),
-            color: Color32::DARK_GRAY,
-            ..Default::default()
-        },
-    );
-    return job;
 }
 
 fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, chat_type: ChatType) {
