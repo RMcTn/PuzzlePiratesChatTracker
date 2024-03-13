@@ -87,6 +87,7 @@ fn main() {
     // TODO: Show the date timestamp beside messages (toggleable) - It's handy when looking back at older messages
     // TODO: User settings tab
     // TODO: User settings, let user pick colour for each chat
+    // TODO: User settings, increase font size
 
     let parsed_stuff = Arc::new(Mutex::new(ParsedChatLog::new()));
 
