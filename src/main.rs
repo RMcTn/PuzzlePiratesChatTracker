@@ -460,6 +460,6 @@ enum ChatType {
 fn write_config_to_config_file(config: &Config, config_path: &Path) -> Result<(), std::io::Error> {
     let mut file = File::create(config_path)?;
     let toml = toml::to_string(&config).unwrap();
-    file.write_all(&toml.as_bytes()).unwrap();
+    file.write_all(&toml.as_bytes())?;
     Ok(())
 }
