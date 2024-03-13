@@ -215,14 +215,14 @@ fn main() {
                         "Global chat",
                     );
                     ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Tell), "Tells");
-                    ui.selectable_value(&mut selected_panel, Tabs::SearchTerm, "Search term");
+                    ui.selectable_value(&mut selected_panel, Tabs::SearchChat, "Search chat");
                     ui.selectable_value(&mut selected_panel, Tabs::GreedyHits, "Greedies");
                 });
 
                 match selected_panel {
                     Tabs::GreedyHits => greedy_ui(ui, &parsed_stuff.lock().unwrap()),
                     Tabs::Chat(chat_type) => chat_ui(ui, &parsed_stuff.lock().unwrap(), chat_type),
-                    Tabs::SearchTerm => search_chat_ui(
+                    Tabs::SearchChat => search_chat_ui(
                         ui,
                         &parsed_stuff.lock().unwrap(),
                         &mut search_term.lock().unwrap(),
@@ -405,7 +405,7 @@ fn open_chat_log(path: &Path) -> BufReader<File> {
 enum Tabs {
     GreedyHits,
     Chat(ChatType),
-    SearchTerm,
+    SearchChat,
 }
 
 #[derive(PartialEq, Copy, Clone)]
