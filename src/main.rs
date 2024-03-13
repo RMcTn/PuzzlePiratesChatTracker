@@ -19,6 +19,27 @@ mod chat_log;
 #[derive(Deserialize, Serialize, Clone, Debug)]
 struct Config {
     chat_log_path: PathBuf,
+    #[serde(default)]
+    message_limit: MessageLimit,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+struct MessageLimit(u64);
+
+impl Default for MessageLimit {
+    fn default() -> Self {
+        MessageLimit(1000)
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            // TODO: FIXME: Empty pathbuf by default? Should be an option
+            chat_log_path: PathBuf::new(),
+            message_limit: MessageLimit::default(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -93,11 +114,11 @@ fn main() {
 
     let config_path = Path::new("puzzle-pirates-chat-tracker.toml");
 
-    let config = Arc::new(Mutex::new(None));
+    let config: Arc<Mutex<Config>> = Arc::new(Mutex::new(Config::default()));
     if let Ok(contents) = fs::read_to_string(config_path) {
         let parsed_config: Config = toml::from_str(&contents).unwrap();
-        *config.lock().unwrap() = Some(parsed_config);
-    };
+        *config.lock().unwrap() = parsed_config;
+    }
 
     let mut selected_panel = Tabs::Chat(ChatType::All);
     let mut last_reparse = Instant::now();
@@ -105,10 +126,8 @@ fn main() {
 
     let search_term = Arc::new(Mutex::new(String::new()));
 
-    if let Some(config) = config.lock().unwrap().as_ref() {
-        let reader = open_chat_log(&config.chat_log_path);
-        parsed_stuff.lock().unwrap().parse_chat_log(reader);
-    }
+    let reader = open_chat_log(&config.lock().unwrap().chat_log_path);
+    parsed_stuff.lock().unwrap().parse_chat_log(reader);
 
     let eframe_ctx = Arc::new(Mutex::new(None::<Context>));
 
@@ -122,14 +141,12 @@ fn main() {
             let time_since_last_reparse = now - last_reparse;
             if time_since_last_reparse > timer_threshold {
                 dbg!("Reparsing");
-                if let Some(config) = config.lock().unwrap().as_ref() {
-                    let reader = open_chat_log(&config.chat_log_path);
-                    parsed_stuff.lock().unwrap().parse_chat_log(reader);
-                    if let Some(ctx) = eframe_ctx.lock().unwrap().as_ref() {
-                        ctx.request_repaint();
-                    }
-                    last_reparse = Instant::now();
+                let reader = open_chat_log(&config.lock().unwrap().chat_log_path);
+                parsed_stuff.lock().unwrap().parse_chat_log(reader);
+                if let Some(ctx) = eframe_ctx.lock().unwrap().as_ref() {
+                    ctx.request_repaint();
                 }
+                last_reparse = Instant::now();
             }
             std::thread::sleep(Duration::from_millis(500));
         });
@@ -155,21 +172,9 @@ fn main() {
                 if ui.button("Open chat log").clicked() {
                     if let Some(path) = rfd::FileDialog::new().pick_file() {
                         let config = {
-                            let mut lock = config.lock().unwrap();
-                            let config = lock.as_mut();
-                            match config {
-                                Some(config) => {
-                                    config.chat_log_path = path;
-                                    config.clone()
-                                }
-                                None => {
-                                    let config = Config {
-                                        chat_log_path: path,
-                                    };
-                                    *lock = Some(config.clone());
-                                    config
-                                }
-                            }
+                            let mut config = config.lock().unwrap();
+                            config.chat_log_path = path;
+                            config.clone()
                         };
 
                         if let Ok(mut file) = File::create(config_path) {
@@ -191,14 +196,12 @@ fn main() {
                     // TODO: Drag and drop file
                 }
                 if ui.button("Reload chat log").clicked() {
-                    if let Some(config) = config.lock().unwrap().as_ref() {
-                        let reader = open_chat_log(&config.chat_log_path);
-                        // Wipe our progress on reload
-                        let mut parsed = parsed_stuff.lock().unwrap();
-                        *parsed = ParsedChatLog::new();
-                        //  TODO: Might want to send a message to the background thread instead of doing this parse here
-                        parsed.parse_chat_log(reader);
-                    }
+                    let reader = open_chat_log(&config.lock().unwrap().chat_log_path);
+                    // Wipe our progress on reload
+                    let mut parsed = parsed_stuff.lock().unwrap();
+                    *parsed = ParsedChatLog::new();
+                    //  TODO: Might want to send a message to the background thread instead of doing this parse here
+                    parsed.parse_chat_log(reader);
                 }
 
                 ui.horizontal(|ui| {
@@ -219,13 +222,17 @@ fn main() {
                     ui.selectable_value(&mut selected_panel, Tabs::GreedyHits, "Greedies");
                 });
 
+                let message_limit = config.lock().unwrap().message_limit.0 as usize;
                 match selected_panel {
                     Tabs::GreedyHits => greedy_ui(ui, &parsed_stuff.lock().unwrap()),
-                    Tabs::Chat(chat_type) => chat_ui(ui, &parsed_stuff.lock().unwrap(), chat_type),
+                    Tabs::Chat(chat_type) => {
+                        chat_ui(ui, &parsed_stuff.lock().unwrap(), chat_type, message_limit)
+                    }
                     Tabs::SearchChat => search_chat_ui(
                         ui,
                         &parsed_stuff.lock().unwrap(),
                         &mut search_term.lock().unwrap(),
+                        message_limit,
                     ),
                 }
             });
@@ -234,7 +241,12 @@ fn main() {
     .unwrap();
 }
 
-fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, search_term: &mut String) {
+fn search_chat_ui(
+    ui: &mut Ui,
+    parsed_stuff: &ParsedChatLog,
+    search_term: &mut String,
+    message_limit: usize,
+) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.heading("Filtered chat");
         let search_label = ui.label("Search term");
@@ -246,7 +258,6 @@ fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, search_term: &mut S
             ui.label("No chat messages found.");
         }
         for (i, message) in matching_messages.iter().rev().enumerate() {
-            let message_limit = 1000;
             if i >= message_limit {
                 break;
             }
@@ -262,7 +273,7 @@ fn search_chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, search_term: &mut S
     });
 }
 
-fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, chat_type: ChatType) {
+fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, chat_type: ChatType, message_limit: usize) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         let heading = match chat_type {
             ChatType::Chat => "Chat",
@@ -280,7 +291,6 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, chat_type: ChatType) {
                 .rev()
                 .enumerate()
             {
-                let message_limit = 1000;
                 if i >= message_limit {
                     break;
                 }
@@ -309,7 +319,6 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, chat_type: ChatType) {
         }
 
         for (i, message) in messages.iter().rev().enumerate() {
-            let message_limit = 1000;
             if i >= message_limit {
                 break;
             }
