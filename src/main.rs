@@ -18,7 +18,7 @@ mod chat_log;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 struct Config {
-    chat_log_path: PathBuf,
+    chat_log_path: Option<PathBuf>,
     #[serde(default)]
     message_limit: MessageLimit,
 }
@@ -35,8 +35,7 @@ impl Default for MessageLimit {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            // TODO: FIXME: Empty pathbuf by default? Should be an option
-            chat_log_path: PathBuf::new(),
+            chat_log_path: None,
             message_limit: MessageLimit::default(),
         }
     }
@@ -126,8 +125,10 @@ fn main() {
 
     let search_term = Arc::new(Mutex::new(String::new()));
 
-    let reader = open_chat_log(&config.lock().unwrap().chat_log_path);
-    parsed_stuff.lock().unwrap().parse_chat_log(reader);
+    if let Some(chat_log_path) = &config.lock().unwrap().chat_log_path {
+        let reader = open_chat_log(chat_log_path);
+        parsed_stuff.lock().unwrap().parse_chat_log(reader);
+    }
 
     let eframe_ctx = Arc::new(Mutex::new(None::<Context>));
 
@@ -141,8 +142,10 @@ fn main() {
             let time_since_last_reparse = now - last_reparse;
             if time_since_last_reparse > timer_threshold {
                 dbg!("Reparsing");
-                let reader = open_chat_log(&config.lock().unwrap().chat_log_path);
-                parsed_stuff.lock().unwrap().parse_chat_log(reader);
+                if let Some(chat_log_path) = &config.lock().unwrap().chat_log_path {
+                    let reader = open_chat_log(chat_log_path);
+                    parsed_stuff.lock().unwrap().parse_chat_log(reader);
+                }
                 if let Some(ctx) = eframe_ctx.lock().unwrap().as_ref() {
                     ctx.request_repaint();
                 }
@@ -173,7 +176,7 @@ fn main() {
                     if let Some(path) = rfd::FileDialog::new().pick_file() {
                         let config = {
                             let mut config = config.lock().unwrap();
-                            config.chat_log_path = path;
+                            config.chat_log_path = Some(path);
                             config.clone()
                         };
 
@@ -189,19 +192,23 @@ fn main() {
 
                         let mut parsed = parsed_stuff.lock().unwrap();
                         *parsed = ParsedChatLog::new();
-                        let reader = open_chat_log(&config.chat_log_path);
-                        parsed.parse_chat_log(reader);
+                        if let Some(chat_log_path) = &config.chat_log_path {
+                            let reader = open_chat_log(chat_log_path);
+                            parsed.parse_chat_log(reader);
+                        }
                     }
 
                     // TODO: Drag and drop file
                 }
                 if ui.button("Reload chat log").clicked() {
-                    let reader = open_chat_log(&config.lock().unwrap().chat_log_path);
-                    // Wipe our progress on reload
-                    let mut parsed = parsed_stuff.lock().unwrap();
-                    *parsed = ParsedChatLog::new();
-                    //  TODO: Might want to send a message to the background thread instead of doing this parse here
-                    parsed.parse_chat_log(reader);
+                    if let Some(chat_log_path) = &config.lock().unwrap().chat_log_path {
+                        let reader = open_chat_log(chat_log_path);
+                        // Wipe our progress on reload
+                        let mut parsed = parsed_stuff.lock().unwrap();
+                        *parsed = ParsedChatLog::new();
+                        //  TODO: Might want to send a message to the background thread instead of doing this parse here
+                        parsed.parse_chat_log(reader);
+                    }
                 }
 
                 ui.horizontal(|ui| {
