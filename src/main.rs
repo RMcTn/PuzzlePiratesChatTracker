@@ -137,74 +137,78 @@ fn main() {
         ..Default::default()
     };
     let mut ctx_been_cloned = false;
-    eframe::run_simple_native("Greedy tracker", options, move |ctx, _frame| {
-        if !ctx_been_cloned {
-            *eframe_ctx.lock().unwrap() = Some(ctx.clone());
-            ctx_been_cloned = true;
-        }
+    eframe::run_simple_native(
+        "Puzzle Pirates Chat Tracker",
+        options,
+        move |ctx, _frame| {
+            if !ctx_been_cloned {
+                *eframe_ctx.lock().unwrap() = Some(ctx.clone());
+                ctx_been_cloned = true;
+            }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if ui.button("Open chat log").clicked() {
-                if let Some(path) = rfd::FileDialog::new().pick_file() {
-                    *chat_log_path.lock().unwrap() = Some(path.clone());
+            egui::CentralPanel::default().show(ctx, |ui| {
+                if ui.button("Open chat log").clicked() {
+                    if let Some(path) = rfd::FileDialog::new().pick_file() {
+                        *chat_log_path.lock().unwrap() = Some(path.clone());
 
-                    if let Ok(mut file) = File::create(config_path) {
-                        file.write_all(path.to_string_lossy().as_bytes()).unwrap();
-                    } else {
-                        eprintln!(
-                            "Couldn't open config file at {}",
-                            config_path.to_string_lossy()
-                        );
+                        if let Ok(mut file) = File::create(config_path) {
+                            file.write_all(path.to_string_lossy().as_bytes()).unwrap();
+                        } else {
+                            eprintln!(
+                                "Couldn't open config file at {}",
+                                config_path.to_string_lossy()
+                            );
+                        }
+
+                        let mut parsed = parsed_stuff.lock().unwrap();
+                        *parsed = ParsedChatLog::new();
+                        let reader = open_chat_log(&path);
+                        parsed.parse_chat_log(reader);
                     }
 
-                    let mut parsed = parsed_stuff.lock().unwrap();
-                    *parsed = ParsedChatLog::new();
-                    let reader = open_chat_log(&path);
-                    parsed.parse_chat_log(reader);
+                    // TODO: Drag and drop file
+                }
+                if ui.button("Reload chat log").clicked() {
+                    if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
+                        let reader = open_chat_log(path);
+                        // Wipe our progress on reload
+                        let mut parsed = parsed_stuff.lock().unwrap();
+                        *parsed = ParsedChatLog::new();
+                        //  TODO: Might want to send a message to the background thread instead of doing this parse here
+                        parsed.parse_chat_log(reader);
+                    }
                 }
 
-                // TODO: Drag and drop file
-            }
-            if ui.button("Reload chat log").clicked() {
-                if let Some(path) = chat_log_path.lock().unwrap().as_ref() {
-                    let reader = open_chat_log(path);
-                    // Wipe our progress on reload
-                    let mut parsed = parsed_stuff.lock().unwrap();
-                    *parsed = ParsedChatLog::new();
-                    //  TODO: Might want to send a message to the background thread instead of doing this parse here
-                    parsed.parse_chat_log(reader);
-                }
-            }
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut selected_panel, Tabs::GreedyHits, "Greedies");
+                    ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::All), "All chat");
+                    ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Chat), "Chat");
+                    ui.selectable_value(
+                        &mut selected_panel,
+                        Tabs::Chat(ChatType::Trade),
+                        "Trade chat",
+                    );
+                    ui.selectable_value(
+                        &mut selected_panel,
+                        Tabs::Chat(ChatType::Global),
+                        "Global chat",
+                    );
+                    ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Tell), "Tells");
+                    ui.selectable_value(&mut selected_panel, Tabs::SearchTerm, "Search term");
+                });
 
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut selected_panel, Tabs::GreedyHits, "Greedies");
-                ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::All), "All chat");
-                ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Chat), "Chat");
-                ui.selectable_value(
-                    &mut selected_panel,
-                    Tabs::Chat(ChatType::Trade),
-                    "Trade chat",
-                );
-                ui.selectable_value(
-                    &mut selected_panel,
-                    Tabs::Chat(ChatType::Global),
-                    "Global chat",
-                );
-                ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Tell), "Tells");
-                ui.selectable_value(&mut selected_panel, Tabs::SearchTerm, "Search term");
+                match selected_panel {
+                    Tabs::GreedyHits => greedy_ui(ui, &parsed_stuff.lock().unwrap()),
+                    Tabs::Chat(chat_type) => chat_ui(ui, &parsed_stuff.lock().unwrap(), chat_type),
+                    Tabs::SearchTerm => search_chat_ui(
+                        ui,
+                        &parsed_stuff.lock().unwrap(),
+                        &mut search_term.lock().unwrap(),
+                    ),
+                }
             });
-
-            match selected_panel {
-                Tabs::GreedyHits => greedy_ui(ui, &parsed_stuff.lock().unwrap()),
-                Tabs::Chat(chat_type) => chat_ui(ui, &parsed_stuff.lock().unwrap(), chat_type),
-                Tabs::SearchTerm => search_chat_ui(
-                    ui,
-                    &parsed_stuff.lock().unwrap(),
-                    &mut search_term.lock().unwrap(),
-                ),
-            }
-        });
-    })
+        },
+    )
     .unwrap();
 }
 
