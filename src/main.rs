@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use chat_log::ParsedChatLog;
 use eframe::egui::ViewportBuilder;
+use egui::mutex::RwLock;
 use egui::{Context, Ui};
 use serde::{Deserialize, Serialize};
 use time::{Date, Time};
@@ -227,6 +228,7 @@ fn main() {
                     ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Tell), "Tells");
                     ui.selectable_value(&mut selected_panel, Tabs::SearchChat, "Search chat");
                     ui.selectable_value(&mut selected_panel, Tabs::GreedyHits, "Greedies");
+                    ui.selectable_value(&mut selected_panel, Tabs::Settings, "Settings");
                 });
 
                 let message_limit = config.lock().unwrap().message_limit.0 as usize;
@@ -241,11 +243,22 @@ fn main() {
                         &mut search_term.lock().unwrap(),
                         message_limit,
                     ),
+                    Tabs::Settings => settings_ui(ui, &mut config.lock().unwrap().message_limit.0),
                 }
             });
         },
     )
     .unwrap();
+}
+
+fn settings_ui(ui: &mut Ui, message_limit: &mut u64) {
+    ui.label("Message limit");
+    let mut tmp = message_limit.to_string();
+    ui.text_edit_singleline(&mut tmp);
+
+    if let Ok(new_message_limit) = tmp.parse::<u64>() {
+        *message_limit = new_message_limit;
+    }
 }
 
 fn search_chat_ui(
@@ -422,6 +435,7 @@ enum Tabs {
     GreedyHits,
     Chat(ChatType),
     SearchChat,
+    Settings,
 }
 
 #[derive(PartialEq, Copy, Clone)]
