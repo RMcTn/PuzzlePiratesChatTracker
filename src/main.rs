@@ -94,7 +94,7 @@ fn main() {
         *chat_log_path.lock().unwrap() = Some(Path::new(&contents).to_path_buf());
     };
 
-    let mut selected_panel = Tabs::GreedyHits;
+    let mut selected_panel = Tabs::Chat(ChatType::All);
     let mut last_reparse = Instant::now();
     let timer_threshold = Duration::from_millis(2000);
 
@@ -180,7 +180,6 @@ fn main() {
                 }
 
                 ui.horizontal(|ui| {
-                    ui.selectable_value(&mut selected_panel, Tabs::GreedyHits, "Greedies");
                     ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::All), "All chat");
                     ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Chat), "Chat");
                     ui.selectable_value(
@@ -195,6 +194,7 @@ fn main() {
                     );
                     ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Tell), "Tells");
                     ui.selectable_value(&mut selected_panel, Tabs::SearchTerm, "Search term");
+                    ui.selectable_value(&mut selected_panel, Tabs::GreedyHits, "Greedies");
                 });
 
                 match selected_panel {
