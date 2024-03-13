@@ -114,7 +114,7 @@ impl ParsedChatLog {
         return messages;
     }
 
-    pub fn parse_chat_log<R: Read>(&mut self, buf_reader: BufReader<R>, search_string: &str) {
+    pub fn parse_chat_log<R: Read>(&mut self, buf_reader: BufReader<R>) {
         // TODO: NOTE: We don't have to go through the entire file again, just what has changed?
         // TODO: Add some configurable limit of how many lines to look back on.
         let lines = buf_reader.lines();
@@ -324,7 +324,7 @@ mod tests {
 
         let reader = BufReader::new(log.as_bytes());
         let mut parsed = ParsedChatLog::new();
-        parsed.parse_chat_log(reader, "");
+        parsed.parse_chat_log(reader);
         assert_eq!(parsed.chat_messages.len(), 3);
         assert_eq!(parsed.chat_messages[0].contents, single_name_string);
         assert_eq!(parsed.chat_messages[0].sender, "Someone");
@@ -340,7 +340,7 @@ mod tests {
         let reader = BufReader::new(log.as_bytes());
 
         let mut parsed = ParsedChatLog::new();
-        parsed.parse_chat_log(reader, "");
+        parsed.parse_chat_log(reader);
         let time = parsed.chat_messages[0].timestamp;
         assert_eq!(time.hour(), 16);
         assert_eq!(time.minute(), 05);
@@ -356,7 +356,7 @@ mod tests {
         let reader = BufReader::new(log.as_bytes());
 
         let mut parsed = ParsedChatLog::new();
-        parsed.parse_chat_log(reader, "");
+        parsed.parse_chat_log(reader);
         assert_eq!(parsed.chat_messages[0].date, None);
         let date = parsed.chat_messages[1].date.unwrap();
         assert_eq!(date.year(), 2024);
@@ -369,7 +369,7 @@ mod tests {
         let log = "[16:05:01] Someone-else says, \"we just got intercepted\"\"";
         let reader = BufReader::new(log.as_bytes());
         let mut parsed = ParsedChatLog::new();
-        parsed.parse_chat_log(reader, "");
+        parsed.parse_chat_log(reader);
 
         assert_eq!(parsed.chat_messages[0].contents, log);
         assert_eq!(parsed.chat_messages[0].sender, "Someone-else");
@@ -386,7 +386,7 @@ mod tests {
         let reader = BufReader::new(log.as_bytes());
 
         let mut parsed = ParsedChatLog::new();
-        parsed.parse_chat_log(reader, "");
+        parsed.parse_chat_log(reader);
         assert_eq!(parsed.trade_chat_messages.len(), 2);
         assert_eq!(parsed.trade_chat_messages[0].contents, single_name_string);
         assert_eq!(parsed.trade_chat_messages[0].sender, "Someone");
@@ -403,7 +403,7 @@ mod tests {
         let reader = BufReader::new(log.as_bytes());
 
         let mut parsed = ParsedChatLog::new();
-        parsed.parse_chat_log(reader, "");
+        parsed.parse_chat_log(reader);
         assert_eq!(parsed.global_chat_messages.len(), 2);
         assert_eq!(parsed.global_chat_messages[0].contents, single_name_string);
         assert_eq!(parsed.global_chat_messages[0].sender, "Someone");
@@ -420,7 +420,7 @@ mod tests {
         let reader = BufReader::new(log.as_bytes());
 
         let mut parsed = ParsedChatLog::new();
-        parsed.parse_chat_log(reader, "");
+        parsed.parse_chat_log(reader);
         assert_eq!(parsed.tells.len(), 2);
         assert_eq!(parsed.tells[0].contents, single_name_string);
         assert_eq!(parsed.tells[0].sender, "Someone");
@@ -437,7 +437,7 @@ mod tests {
         );
         let reader = BufReader::new(log.as_bytes());
         let mut parsed = ParsedChatLog::new();
-        parsed.parse_chat_log(reader, "");
+        parsed.parse_chat_log(reader);
 
         assert_eq!(parsed.last_line_read, 4);
         assert_eq!(parsed.total_lines_read, 4);
@@ -445,7 +445,7 @@ mod tests {
         log += "\n[16:05:04] Someone tells ye, \"2 for spades\"";
         let reader = BufReader::new(log.as_bytes());
         let mut parsed = ParsedChatLog::new();
-        parsed.parse_chat_log(reader, "");
+        parsed.parse_chat_log(reader);
         assert_eq!(parsed.last_line_read, 5);
         assert_eq!(parsed.total_lines_read, 5);
     }
@@ -458,14 +458,14 @@ mod tests {
 
         let reader = BufReader::new(log.as_bytes());
         let mut parsed = ParsedChatLog::new();
-        parsed.parse_chat_log(reader, "");
+        parsed.parse_chat_log(reader);
 
         assert_eq!(*parsed.battles[0].greedies.first_key_value().unwrap().1, 1);
 
         let second_greedy_hit = "[01:50:54] Bob delivers an overwhelming barrage against Petty Robert, causing some treasure to fall from their grip";
         log += second_greedy_hit;
         let reader = BufReader::new(log.as_bytes());
-        parsed.parse_chat_log(reader, "");
+        parsed.parse_chat_log(reader);
         assert_eq!(*parsed.battles[0].greedies.first_key_value().unwrap().1, 2);
     }
 
@@ -483,7 +483,7 @@ mod tests {
         );
         let reader = BufReader::new(log.as_bytes());
         let mut parsed = ParsedChatLog::new();
-        parsed.parse_chat_log(reader, "");
+        parsed.parse_chat_log(reader);
         let messages = parsed.messages_in_order_of_creation();
 
         let expected_order = [

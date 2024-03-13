@@ -1,7 +1,7 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 use std::fs;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufReader, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -105,7 +105,7 @@ fn main() {
         parsed_stuff
             .lock()
             .unwrap()
-            .parse_chat_log(reader, &search_term.lock().unwrap());
+            .parse_chat_log(reader);
     }
 
     let eframe_ctx = Arc::new(Mutex::new(None::<Context>));
@@ -114,7 +114,6 @@ fn main() {
         let chat_log_path = chat_log_path.clone();
         let parsed_stuff = parsed_stuff.clone();
         let eframe_ctx = eframe_ctx.clone();
-        let search_term = search_term.clone();
 
         std::thread::spawn(move || loop {
             let now = Instant::now();
@@ -126,7 +125,7 @@ fn main() {
                     parsed_stuff
                         .lock()
                         .unwrap()
-                        .parse_chat_log(reader, &search_term.lock().unwrap());
+                        .parse_chat_log(reader);
                     if let Some(ctx) = eframe_ctx.lock().unwrap().as_ref() {
                         ctx.request_repaint();
                     }
@@ -167,7 +166,7 @@ fn main() {
                     let mut parsed = parsed_stuff.lock().unwrap();
                     *parsed = ParsedChatLog::new();
                     let reader = open_chat_log(&path);
-                    parsed.parse_chat_log(reader, &search_term.lock().unwrap());
+                    parsed.parse_chat_log(reader);
                 }
 
                 // TODO: Drag and drop file
@@ -179,7 +178,7 @@ fn main() {
                     let mut parsed = parsed_stuff.lock().unwrap();
                     *parsed = ParsedChatLog::new();
                     //  TODO: Might want to send a message to the background thread instead of doing this parse here
-                    parsed.parse_chat_log(reader, &search_term.lock().unwrap());
+                    parsed.parse_chat_log(reader);
                 }
             }
 
