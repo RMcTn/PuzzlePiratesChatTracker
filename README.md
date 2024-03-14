@@ -51,7 +51,7 @@ The configuration format is [TOML](https://toml.io/en/)
 ##### Config values
 | Value | Use | Example |
 |-------|-----|----------
-| chat_log_path | The location of the chat file to use | TODO
+| chat_log_path | The location of the chat file to use | C:\Users\Username\Documents\your_chat_log.txt
 | message_limit | The amount of messages to show per chat tab | 1000
 
 
