@@ -109,6 +109,7 @@ fn main() {
     // TODO: User settings tab
     // TODO: User settings, let user pick colour for each chat
     // TODO: User settings, increase font size
+    // TODO: User settings, Toggle NPC chat messages
 
     let parsed_stuff = Arc::new(Mutex::new(ParsedChatLog::new()));
 
