@@ -1,4 +1,4 @@
-## Puzzle Pirates Chat Tracker
+# Puzzle Pirates Chat Tracker
 I got fed up missing messages in the chat, so here's something that reads your Puzzle Pirates chat log and presents chat messages in a more searchable way.
 
 <figure>
@@ -24,7 +24,7 @@ I got fed up missing messages in the chat, so here's something that reads your P
 - This program was built with Emerald ocean in mind. Other oceans may be supported in future (this mainly affects checking pirate pages)
 
 
-### How to use
+## How to use
 First, [find your chat log](#Finding-your-chat-log).  
 Run the chat tracker, and click 'Open chat log'. 
 The chat tracker will look for new messages in the background, so you can get back to playing.
