@@ -6,11 +6,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use chat_log::ParsedChatLog;
 use eframe::egui::ViewportBuilder;
 use egui::{Context, Ui};
 use serde::{Deserialize, Serialize};
 use time::{Date, Time};
+
+use chat_log::ParsedChatLog;
 
 const PIRATE_INFO_URL: &str = "https://emerald.puzzlepirates.com/yoweb/pirate.wm?target=";
 
@@ -258,7 +259,7 @@ fn main() {
             }
         },
     )
-    .unwrap();
+        .unwrap();
 }
 
 fn settings_ui(ui: &mut Ui, message_limit: &mut u64) {
@@ -315,8 +316,11 @@ fn chat_ui(ui: &mut Ui, parsed_stuff: &ParsedChatLog, chat_type: ChatType, messa
         ui.heading(heading);
 
         if chat_type == ChatType::All {
-            for (i, message) in parsed_stuff
-                .messages_in_order_of_creation()
+            let messages = parsed_stuff.messages_in_order_of_creation();
+            if messages.is_empty() {
+                ui.label("No chat messages found.");
+            }
+            for (i, message) in messages
                 .iter()
                 .rev()
                 .enumerate()
