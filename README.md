@@ -22,7 +22,6 @@ I got fed up missing messages in the chat, so here's something that reads your P
 
 ### Limitations
 - This program was built with Emerald ocean in mind. Other oceans may be supported in future (this mainly affects checking pirate pages)
-- Only 1000 messages will be displayed in each chat tab. This is planned to be configurable at some point
 
 
 ### How to use
