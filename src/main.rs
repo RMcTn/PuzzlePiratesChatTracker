@@ -214,7 +214,7 @@ fn main() {
                     }
                 }
 
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::All), "All chat");
                     ui.selectable_value(&mut selected_panel, Tabs::Chat(ChatType::Chat), "Chat");
                     ui.selectable_value(
