@@ -175,6 +175,9 @@ fn main() {
             let original_message_limit = config.lock().unwrap().message_limit;
 
             egui::CentralPanel::default().show(ctx, |ui| {
+                if config.lock().unwrap().chat_log_path.is_none() {
+                    ui.label("No chat log given. Please hit 'Open chat log'");
+                }
                 if ui.button("Open chat log").clicked() {
                     if let Some(path) = rfd::FileDialog::new().pick_file() {
                         let config = {
