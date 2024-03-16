@@ -1,3 +1,4 @@
 /target
 .env
 puzzle-pirates-chat-tracker.toml
+.idea
