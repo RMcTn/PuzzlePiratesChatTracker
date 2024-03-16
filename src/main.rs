@@ -1,3 +1,4 @@
+#![windows_subsystem = "windows"]
 use std::collections::BTreeMap;
 use std::fs;
 use std::fs::File;
